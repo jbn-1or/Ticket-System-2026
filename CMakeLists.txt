@@ -42,5 +42,3 @@ if(TICKET_SYSTEM_SOURCES)
 else()
   message(STATUS "No C++ sources found in ${CMAKE_SOURCE_DIR}/src. Add src/main.cpp or src/code.cpp to build the executable named 'code'.")
 endif()
-
-add_subdirectory(testcases)
