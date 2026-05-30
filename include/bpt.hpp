@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <cstring>
 #include <climits>
+#include <limits>
 
 const int M = 100;
 // 叶子节点限制
@@ -24,6 +25,7 @@ struct FileHeader {
     int height;  // 高度，取根节点高度为1
 };
 
+template<typename ValueType = int>
 struct Node {
     bool is_leaf;  // 是否为叶子
     int key_num;   // 实际存储的key数
@@ -31,7 +33,7 @@ struct Node {
     int parent;  // -1表示无父
 
     char keys[MAX_KEY_LEAF][KEY_LEN];
-    int values[MAX_KEY_LEAF];
+    ValueType values[MAX_KEY_LEAF];
     int children[MAX_KEY_INTERNAL + 1];// key数+1个儿子（仅内部节点有）
 
     Node() {
@@ -45,6 +47,7 @@ struct Node {
     }
 };
 
+template<typename ValueType = int>
 class FileManager {
 private:
     std::fstream file;
@@ -95,7 +98,7 @@ public:
     int allocateBlock() {
         if (header.free_list != -1) {
             int pos = header.free_list;
-            Node temp;
+            Node<ValueType> temp;
             readNode(pos, temp);
             header.free_list = temp.next;
             return pos;
@@ -106,7 +109,7 @@ public:
     
     // 回收删除的节点
     void freeBlock(int pos) {
-        Node temp;
+        Node<ValueType> temp;
         readNode(pos, temp);
         temp.next = header.free_list;
         header.free_list = pos;
@@ -114,16 +117,16 @@ public:
     }
     
     // 读任意node
-    void readNode(int pos, Node& node) {
+    void readNode(int pos, Node<ValueType>& node) {
         // 计算偏移：文件头大小
         file.seekg(sizeof(FileHeader) + pos * NODE_SIZE);
-        file.read(reinterpret_cast<char*>(&node), sizeof(Node));
+        file.read(reinterpret_cast<char*>(&node), sizeof(Node<ValueType>));
     }
     
     // 将任意node写入
-    void writeNode(int pos, const Node& node) {
+    void writeNode(int pos, const Node<ValueType>& node) {
         file.seekp(sizeof(FileHeader) + pos * NODE_SIZE);
-        file.write(reinterpret_cast<const char*>(&node), sizeof(Node));
+        file.write(reinterpret_cast<const char*>(&node), sizeof(Node<ValueType>));
     }
     
     int getRoot() {
@@ -140,11 +143,12 @@ public:
     }
 };
 
+template<typename ValueType = int>
 class BPlusTree {
 private:
-    FileManager fm;
+    FileManager<ValueType> fm;
 
-    int keyValueCompare(const char* a_key, int a_val, const char* b_key, int b_val) {
+    int keyValueCompare(const char* a_key, ValueType a_val, const char* b_key, ValueType b_val) {
         int key_cmp = strcmp(a_key, b_key);
         if (key_cmp != 0) {
             return key_cmp;
@@ -154,7 +158,7 @@ private:
     }
 
     // 找到目标(key,value)位置
-    int findKeyValuePos(Node& node, const char* key, int value) {
+    int findKeyValuePos(Node<ValueType>& node, const char* key, ValueType value) {
         int left = 0, right = node.key_num - 1;
         int result = node.key_num;
         while (left <= right) {
@@ -172,11 +176,11 @@ private:
 
     // 分裂节点(父节点,当前节点在父节点children中的索引,待分裂节点位置)
     void splitNode(int parent_pos, int child_idx, int node_pos) {
-        Node node;
+        Node<ValueType> node;
         fm.readNode(node_pos, node);
         // 分配新节点
         int new_pos = fm.allocateBlock();
-        Node new_node;
+        Node<ValueType> new_node;
         new_node.is_leaf = node.is_leaf;
         new_node.parent = parent_pos;
 
@@ -199,14 +203,14 @@ private:
                 strcpy(new_node.keys[i], node.keys[mid + 1 + i]);
                 new_node.values[i] = node.values[mid + 1 + i];
                 new_node.children[i] = node.children[mid + 1 + i];
-                Node child;
+                Node<ValueType> child;
                 fm.readNode(new_node.children[i], child);
                 child.parent = new_pos;
                 fm.writeNode(new_node.children[i], child);
             }
             // 复制最后一个子节点
             new_node.children[new_node.key_num] = node.children[mid + 1 + new_node.key_num];
-            Node last_child;
+            Node<ValueType> last_child;
             fm.readNode(new_node.children[new_node.key_num], last_child);
             last_child.parent = new_pos;
             fm.writeNode(new_node.children[new_node.key_num], last_child);
@@ -218,7 +222,7 @@ private:
         fm.writeNode(new_pos, new_node);
         // 提升到父节点
         const char* promote_key;
-        int promote_value;
+        ValueType promote_value;
         if (node.is_leaf) {
             // 叶子节点，新节点的第一个元素
             promote_key = new_node.keys[0];
@@ -232,7 +236,7 @@ private:
         if (parent_pos == -1) {
             // 创建新的根节点
             int root_pos = fm.allocateBlock();
-            Node root;
+            Node<ValueType> root;
             root.is_leaf = false;  // 根节点现在是内部节点
             root.key_num = 1;
             root.parent = -1;
@@ -250,7 +254,7 @@ private:
             fm.setRoot(root_pos);
             fm.setHeight(fm.getHeight() + 1);
         } else { // 有父节点，将提升元素插入父节点
-            Node parent;
+            Node<ValueType> parent;
             fm.readNode(parent_pos, parent);
             for (int i = parent.key_num; i > child_idx; i--) {
                 strcpy(parent.keys[i], parent.keys[i - 1]);
@@ -266,7 +270,7 @@ private:
             fm.writeNode(parent_pos, parent);
             // 递归检查父节点是否也上溢
             if (parent.key_num >= MAX_KEY_INTERNAL) {
-                Node grand_parent;
+                Node<ValueType> grand_parent;
                 int grand_pos = -1;
                 if (parent.parent != -1) {
                     grand_pos = parent.parent;
@@ -285,11 +289,11 @@ private:
 
     // 将右节点合并到左节点(父节点位置,左节点在父节点children中的索引)
     void mergeNode(int parent_pos, int idx) {
-        Node parent;
+        Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
         int left_pos = parent.children[idx]; // 左节点位置
         int right_pos = parent.children[idx + 1];// 右节点位置
-        Node left, right;
+        Node<ValueType> left, right;
         fm.readNode(left_pos, left);
         fm.readNode(right_pos, right);
 
@@ -314,14 +318,14 @@ private:
                 left.values[left.key_num + i] = right.values[i];
                 left.children[left.key_num + i] = right.children[i];
 
-                Node child;
+                Node<ValueType> child;
                 fm.readNode(right.children[i], child);
                 child.parent = left_pos;
                 fm.writeNode(right.children[i], child);
             }
             // 最后一个子节点
             left.children[left.key_num + right.key_num] = right.children[right.key_num];
-            Node last_child;
+            Node<ValueType> last_child;
             fm.readNode(right.children[right.key_num], last_child);
             last_child.parent = left_pos;
             fm.writeNode(right.children[right.key_num], last_child);
@@ -333,7 +337,7 @@ private:
         fm.freeBlock(right_pos);
 
         // 从父节点删除key和右节点指针
-        for (int i = idx; i < parent.key_num - 1; i++) {
+            for (int i = idx; i < parent.key_num - 1; i++) {
             strcpy(parent.keys[i], parent.keys[i + 1]);
             parent.values[i] = parent.values[i + 1];
             parent.children[i + 1] = parent.children[i + 2];
@@ -360,10 +364,10 @@ private:
 
     // 从左/右兄弟节点借一个key（当前节点位置，当前节点在父节点children中的索引）
     bool borrowKey(int node_pos, int parent_idx) {
-        Node node;
+        Node<ValueType> node;
         fm.readNode(node_pos, node);
         int parent_pos = node.parent;
-        Node parent;
+        Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
         
         int min_key = node.is_leaf ? MIN_KEY_LEAF : MIN_KEY_INTERNAL;
@@ -371,7 +375,7 @@ private:
         // 从左兄弟借
         if (parent_idx > 0) {
             int left_pos = parent.children[parent_idx - 1];
-            Node left;
+            Node<ValueType> left;
             fm.readNode(left_pos, left);
             
             // 左兄弟key数必须大于最小值
@@ -404,7 +408,7 @@ private:
                     node.key_num++;
                     
                     // 更新子节点parent
-                    Node child;
+                    Node<ValueType> child;
                     fm.readNode(node.children[0], child);
                     child.parent = node_pos;
                     fm.writeNode(node.children[0], child);
@@ -426,7 +430,7 @@ private:
         // 从右兄弟借
         if (parent_idx < parent.key_num) {
             int right_pos = parent.children[parent_idx + 1];
-            Node right;
+            Node<ValueType> right;
             fm.readNode(right_pos, right);
             
             if (right.key_num > min_key) {
@@ -451,7 +455,7 @@ private:
                     node.children[node.key_num + 1] = right.children[0];
                     node.key_num++;
                     // 更新子节点parent
-                    Node child;
+                    Node<ValueType> child;
                     fm.readNode(node.children[node.key_num], child);
                     child.parent = node_pos;
                     fm.writeNode(node.children[node.key_num], child);
@@ -480,14 +484,14 @@ private:
 
     // 处理节点下溢
     void handleUnderflow(int node_pos) {
-        Node node;
+        Node<ValueType> node;
         fm.readNode(node_pos, node);
         // 根节点下溢
         if (node_pos == fm.getRoot()) {
             // 根是内部节点且只有一个子节点，则子节点升级为新根
             if (node.key_num == 0 && !node.is_leaf) {
                 int child_pos = node.children[0];
-                Node child;
+                Node<ValueType> child;
                 fm.readNode(child_pos, child);
                 child.parent = -1;
                 fm.writeNode(child_pos, child);
@@ -500,7 +504,7 @@ private:
 
         // 找到当前节点在父节点中的索引
         int parent_pos = node.parent;
-        Node parent;
+        Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
         int idx = 0;
         for (; idx <= parent.key_num; idx++) {
@@ -519,11 +523,11 @@ private:
     }
 
     // 找到目标key应该所在的叶子节点
-    int findLeaf(const char* key, int value = INT_MIN) {
+    int findLeaf(const char* key, ValueType value = std::numeric_limits<ValueType>::min()) {
         if (fm.getRoot() == -1) return -1;
         
         int current = fm.getRoot();
-        Node node;
+        Node<ValueType> node;
         fm.readNode(current, node);
         while (!node.is_leaf) {
             int pos = findKeyValuePos(node, key, value);
@@ -536,11 +540,11 @@ private:
 public:
     BPlusTree(const std::string& filename) : fm(filename) {}
 
-    bool insert(const char* key, int value) {
+    bool insert(const char* key, ValueType value) {
         // 空树，创建第一个叶子节点作为根
         if (fm.getRoot() == -1) {
             int pos = fm.allocateBlock();
-            Node node;
+            Node<ValueType> node;
             node.is_leaf = true;
             node.key_num = 1;
             node.parent = -1;
@@ -553,7 +557,7 @@ public:
         }
 
         int leaf_pos = findLeaf(key, value);
-        Node leaf;
+        Node<ValueType> leaf;
         fm.readNode(leaf_pos, leaf);
         
         // 查找插入位置
@@ -567,7 +571,7 @@ public:
                 break;
             // pos等于节点key总数,找下一个叶子节点
             if (leaf.next != -1) {
-                Node next;
+                Node<ValueType> next;
                 fm.readNode(leaf.next, next);
                 if (strcmp(next.keys[0], key) == 0) {
                     // 下一个叶子开头还是相同key，继续在该叶子查找
@@ -594,7 +598,7 @@ public:
         // 检查是否上溢
         if (leaf.key_num >= MAX_KEY_LEAF) {
             // 找到叶子在父节点中的索引
-            Node parent;
+            Node<ValueType> parent;
             int parent_pos = -1;
             int parent_idx = 0;
             if (leaf.parent != -1) {
@@ -610,11 +614,11 @@ public:
         return true;
     }
     
-    bool remove(const char* key, int value) {
+    bool remove(const char* key, ValueType value) {
         if (fm.getRoot() == -1) return false;
 
         int leaf_pos = findLeaf(key, value);
-        Node leaf;
+        Node<ValueType> leaf;
         fm.readNode(leaf_pos, leaf);
 
         int pos = findKeyValuePos(leaf, key, value);
@@ -627,7 +631,7 @@ public:
             if (pos < leaf.key_num) break;
             
             if (leaf.next != -1) {
-                Node next;
+                Node<ValueType> next;
                 fm.readNode(leaf.next, next);
                 if (strcmp(next.keys[0], key) == 0) {
                     leaf_pos = leaf.next;
@@ -662,7 +666,7 @@ public:
             std::cout << "null\n";
             return;
         }
-        int leaf_pos = findLeaf(key, INT_MIN);
+        int leaf_pos = findLeaf(key, std::numeric_limits<ValueType>::min());
         if (leaf_pos == -1) {
             std::cout << "null\n";
             return;
@@ -676,10 +680,10 @@ public:
         
         // 遍历
         while (current_leaf != -1) {
-            Node curr;
+            Node<ValueType> curr;
             fm.readNode(current_leaf, curr);
             // 第一个叶子用二分找起始位置
-            pos = first_leaf ? findKeyValuePos(curr, key, INT_MIN) : 0;
+            pos = first_leaf ? findKeyValuePos(curr, key, std::numeric_limits<ValueType>::min()) : 0;
             first_leaf = false;
             while (pos < curr.key_num && strcmp(curr.keys[pos], key) == 0) {
                 if (!first) std::cout << " ";
@@ -704,33 +708,3 @@ public:
         std::cout << "\n";
     }
 };
-
-int main() {
-    std::ios::sync_with_stdio(false);
-    std::cin.tie(0);
-    
-    BPlusTree bpt("bplustree.dat");
-    
-    int n;
-    std::cin >> n;
-    
-    while (n--) {
-        std::string op;
-        std::string key;
-        std::cin >> op >> key;
-        
-        if (op == "insert") {
-            int value;
-            std::cin >> value;
-            bpt.insert(key.c_str(), value);
-        } else if (op == "delete") {
-            int value;
-            std::cin >> value;
-            bpt.remove(key.c_str(), value);
-        } else if (op == "find") {
-            bpt.find(key.c_str());
-        }
-    }
-    
-    return 0;
-}
