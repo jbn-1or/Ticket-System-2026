@@ -659,6 +659,57 @@ public:
         
         return true;
     }
+
+    bool find(const char* key, ValueType& value) {
+        if (fm.getRoot() == -1) return false;
+        int leaf_pos = findLeaf(key, std::numeric_limits<ValueType>::min());
+        if (leaf_pos == -1) return false;
+        Node<ValueType> leaf;
+        fm.readNode(leaf_pos, leaf);
+        int pos = findKeyValuePos(leaf, key, std::numeric_limits<ValueType>::min());
+        while (leaf_pos != -1) {
+            while (pos < leaf.key_num) {
+                int cmp = strcmp(leaf.keys[pos], key);
+                if (cmp == 0) {
+                    value = leaf.values[pos];
+                    return true;
+                }
+                if (cmp > 0) return false;
+                pos++;
+            }
+            if (leaf.next == -1) break;
+            leaf_pos = leaf.next;
+            fm.readNode(leaf_pos, leaf);
+            pos = 0;
+        }
+        return false;
+    }
+
+    int findAll(const char* key, ValueType values[], int maxValues) {
+        if (fm.getRoot() == -1) return 0;
+        int leaf_pos = findLeaf(key, std::numeric_limits<ValueType>::min());
+        if (leaf_pos == -1) return 0;
+        Node<ValueType> leaf;
+        fm.readNode(leaf_pos, leaf);
+        int pos = findKeyValuePos(leaf, key, std::numeric_limits<ValueType>::min());
+        int count = 0;
+        while (leaf_pos != -1) {
+            for (; pos < leaf.key_num && count < maxValues; ++pos) {
+                int cmp = strcmp(leaf.keys[pos], key);
+                if (cmp == 0) {
+                    values[count++] = leaf.values[pos];
+                } else if (cmp > 0) {
+                    return count;
+                }
+            }
+            if (pos < leaf.key_num && strcmp(leaf.keys[pos], key) > 0) break;
+            if (leaf.next == -1) break;
+            leaf_pos = leaf.next;
+            fm.readNode(leaf_pos, leaf);
+            pos = 0;
+        }
+        return count;
+    }
     
     // 输出指定key对应的所有value
     void find(const char* key) {

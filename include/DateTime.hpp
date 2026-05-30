@@ -46,6 +46,8 @@ public:
     static int dayOffset(const Date& from, const Date& to);
 };
 
+DateTime addMinutes(const DateTime& dt, int minutes);
+
 } // namespace ticket
 
 #endif // TICKET_SYSTEM_DATETIME_HPP

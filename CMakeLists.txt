@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(TicketSystem2026 LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -40,3 +42,5 @@ if(TICKET_SYSTEM_SOURCES)
 else()
   message(STATUS "No C++ sources found in ${CMAKE_SOURCE_DIR}/src. Add src/main.cpp or src/code.cpp to build the executable named 'code'.")
 endif()
+
+add_subdirectory(testcases)

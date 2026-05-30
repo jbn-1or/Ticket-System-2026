@@ -20,22 +20,27 @@ private:
     bool checkLogin(const std::string& username) const;
     int privilegeOf(const std::string& username) const;
 
-    void handleAddUser(const Command& command);
-    void handleLogin(const Command& command);
-    void handleLogout(const Command& command);
-    void handleQueryProfile(const Command& command);
-    void handleModifyProfile(const Command& command);
-    void handleAddTrain(const Command& command);
-    void handleDeleteTrain(const Command& command);
-    void handleReleaseTrain(const Command& command);
-    void handleQueryTrain(const Command& command);
-    void handleQueryTicket(const Command& command);
-    void handleQueryTransfer(const Command& command);
-    void handleBuyTicket(const Command& command);
-    void handleQueryOrder(const Command& command);
-    void handleRefundTicket(const Command& command);
-    void handleClean(const Command& command);
-    void handleExit(const Command& command);
+    // logged-in users (simple fixed-size storage to avoid STL containers)
+    static const int MAX_LOGGED = 10000;
+    std::string logged_users[MAX_LOGGED];
+    int logged_count = 0;
+
+    std::string handleAddUser(const Command& command);
+    std::string handleLogin(const Command& command);
+    std::string handleLogout(const Command& command);
+    std::string handleQueryProfile(const Command& command);
+    std::string handleModifyProfile(const Command& command);
+    std::string handleAddTrain(const Command& command);
+    std::string handleDeleteTrain(const Command& command);
+    std::string handleReleaseTrain(const Command& command);
+    std::string handleQueryTrain(const Command& command);
+    std::string handleQueryTicket(const Command& command);
+    std::string handleQueryTransfer(const Command& command);
+    std::string handleBuyTicket(const Command& command);
+    std::string handleQueryOrder(const Command& command);
+    std::string handleRefundTicket(const Command& command);
+    std::string handleClean(const Command& command);
+    std::string handleExit(const Command& command);
 
 private:
     StorageManager storage_;

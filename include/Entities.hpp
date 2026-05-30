@@ -44,6 +44,7 @@ struct TrainRecord {
 };
 
 struct OrderRecord {
+    int order_id;
     std::string username;
     std::string train_id;
     Date date;
