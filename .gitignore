@@ -3,3 +3,4 @@ data/
 *.log
 code
 build-asan/
+*.data

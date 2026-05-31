@@ -1,7 +1,7 @@
 #include "../include/System.hpp"
-#include <fstream>
 #include <filesystem>
-#include <iostream>
+#include <vector>
+#include <cstring>
 
 namespace ticket {
 
@@ -298,11 +298,10 @@ static bool lineToOrder(const std::string& line, OrderRecord& order) {
 
 static int computeSegmentOccupancy(const StorageManager& storage, const TrainRecord& train, const Date& start_date, int occupancy[]) {
     for (int i = 0; i < train.station_num - 1; ++i) occupancy[i] = 0;
-    int order_count = 0;
-    OrderRecord orders[10000];
-    int ids[10000];
-    if (!storage.loadAllOrders(orders, ids, order_count)) return 0;
-    for (int i = 0; i < order_count; ++i) {
+    std::vector<OrderRecord> orders;
+    std::vector<int> ids;
+    if (!storage.loadAllOrders(orders, ids)) return 0;
+    for (size_t i = 0; i < orders.size(); ++i) {
         OrderRecord& order = orders[i];
         if (order.status != OrderStatus::Success) continue;
         if (order.train_id != train.train_id) continue;
@@ -398,11 +397,11 @@ std::string TicketSystem::handleQueryTrain(const Command& command) {
     for (int i = 0; i < train.station_num; ++i) {
         out += "\n" + train.stations[i] + " ";
         if (i == 0) {
-            out += "xx-xx xx:xx -> " + stationDeparture(train, i, start_date).time.toString();
+            out += "xx-xx xx:xx -> " + stationDeparture(train, i, start_date).toString();
         } else if (i == train.station_num - 1) {
             out += stationArrival(train, i, start_date).toString() + " -> xx-xx xx:xx";
         } else {
-            out += stationArrival(train, i, start_date).toString() + " -> " + stationDeparture(train, i, start_date).time.toString();
+            out += stationArrival(train, i, start_date).toString() + " -> " + stationDeparture(train, i, start_date).toString();
         }
         int price = routePrice(train, 0, i);
         out += " " + std::to_string(price);
@@ -425,16 +424,12 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    TrainRecord* trains = new TrainRecord[10000];
-    int train_count = 0;
-    if (!storage_.loadAllTrains(trains, train_count)) {
-        delete[] trains;
-        return "0";
-    }
+    std::vector<TrainRecord> trains;
+    if (!storage_.loadAllTrains(trains)) return "0";
     struct Item { std::string line; int key1; int key2; std::string key3; };
-    Item* items = new Item[10000];
-    int item_count = 0;
-    for (int i = 0; i < train_count; ++i) {
+    std::vector<Item> items;
+    items.reserve(trains.size());
+    for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& train = trains[i];
         if (!train.released) continue;
         int from_idx = findStation(train, from);
@@ -448,25 +443,21 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         int seats = availableSeats(storage_, train, start_date, from_idx, to_idx);
         int duration = DateTimeUtils::dayOffset(depart.date, arrive.date) * 1440 + (arrive.time.hour * 60 + arrive.time.minute) - (depart.time.hour * 60 + depart.time.minute);
         std::string line = train.train_id + " " + from + " " + depart.toString() + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) + " " + std::to_string(seats);
-        if (item_count < 10000) {
-            if (order == "time") {
-                items[item_count++] = { line, duration, price, train.train_id };
-            } else {
-                items[item_count++] = { line, price, duration, train.train_id };
-            }
+        if (order == "time") {
+            items.push_back({ line, duration, price, train.train_id });
+        } else {
+            items.push_back({ line, price, duration, train.train_id });
         }
     }
-    if (item_count == 0) {
-        delete[] trains;
-        delete[] items;
+    if (items.empty()) {
         return "0";
     }
-    for (int i = 0; i < item_count - 1; ++i) {
-        int best = i;
-        for (int j = i + 1; j < item_count; ++j) {
+    for (size_t i = 0; i + 1 < items.size(); ++i) {
+        size_t best = i;
+        for (size_t j = i + 1; j < items.size(); ++j) {
             if (items[j].key1 < items[best].key1
                 || (items[j].key1 == items[best].key1 && items[j].key2 < items[best].key2)
-                || (items[j].key1 == items[best].key1 && items[j].key2 == items[best].key2 && items[j].key3 < items[best].key3)) {
+                || (items[j].key1 == items[best].key1 && items[j].key2 == items[best].key2 && strcmp(items[j].key3.c_str(), items[best].key3.c_str()) < 0)) {
                 best = j;
             }
         }
@@ -474,12 +465,10 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
             Item tmp = items[i]; items[i] = items[best]; items[best] = tmp;
         }
     }
-    std::string out = std::to_string(item_count);
-    for (int i = 0; i < item_count; ++i) {
+    std::string out = std::to_string(static_cast<int>(items.size()));
+    for (size_t i = 0; i < items.size(); ++i) {
         out += "\n" + items[i].line;
     }
-    delete[] trains;
-    delete[] items;
     return out;
 }
 
@@ -502,12 +491,8 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    TrainRecord* trains = new TrainRecord[10000];
-    int train_count = 0;
-    if (!storage_.loadAllTrains(trains, train_count)) {
-        delete[] trains;
-        return "0";
-    }
+    std::vector<TrainRecord> trains;
+    if (!storage_.loadAllTrains(trains)) return "0";
     bool found = false;
     int best_main = 0;
     int best_secondary = 0;
@@ -515,7 +500,7 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_line2;
     std::string best_first_id;
     std::string best_second_id;
-    for (int i = 0; i < train_count; ++i) {
+    for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& first = trains[i];
         if (!first.released) continue;
         int start_idx = findStation(first, from);
@@ -525,7 +510,7 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
         for (int mid = start_idx + 1; mid < first.station_num - 1; ++mid) {
             DateTime first_arrive = stationArrival(first, mid, first_start);
-            for (int j = 0; j < train_count; ++j) {
+            for (size_t j = 0; j < trains.size(); ++j) {
                 TrainRecord& second = trains[j];
                 if (!second.released) continue;
                 if (first.train_id == second.train_id) continue;
@@ -558,8 +543,8 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                     else if (main_key == best_main) {
                         if (sec_key < best_secondary) better = true;
                         else if (sec_key == best_secondary) {
-                            if (first.train_id < best_first_id) better = true;
-                            else if (first.train_id == best_first_id && second.train_id < best_second_id) better = true;
+                            if (strcmp(first.train_id.c_str(), best_first_id.c_str()) < 0) better = true;
+                            else if (first.train_id == best_first_id && strcmp(second.train_id.c_str(), best_second_id.c_str()) < 0) better = true;
                         }
                     }
                     if (better) {
@@ -575,11 +560,9 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         }
     }
     if (!found) {
-        delete[] trains;
         return "0";
     }
     std::string result = best_line1 + "\n" + best_line2;
-    delete[] trains;
     return result;
 }
 
@@ -600,19 +583,20 @@ static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bo
 }
 
 static bool loadUserOrders(const StorageManager& storage, const std::string& username,
-        OrderRecord orders[], int ids[], int& count, bool descending = true) {
-    int total = 0;
-    if (!storage.loadAllOrders(orders, ids, total)) return false;
-    int outCount = 0;
-    for (int i = 0; i < total; ++i) {
+        std::vector<OrderRecord>& orders, std::vector<int>& ids, bool descending = true) {
+    if (!storage.loadAllOrders(orders, ids)) return false;
+    std::vector<OrderRecord> filteredOrders;
+    std::vector<int> filteredIds;
+    for (size_t i = 0; i < orders.size(); ++i) {
         if (orders[i].username == username) {
-            orders[outCount] = orders[i];
-            ids[outCount] = ids[i];
-            outCount++;
+            filteredOrders.push_back(orders[i]);
+            filteredIds.push_back(ids[i]);
         }
     }
-    count = outCount;
-    sortOrdersByTimestamp(orders, ids, count, descending);
+    orders.swap(filteredOrders);
+    ids.swap(filteredIds);
+    int count = static_cast<int>(orders.size());
+    sortOrdersByTimestamp(orders.data(), ids.data(), count, descending);
     return true;
 }
 
@@ -624,21 +608,22 @@ static std::string orderStatusString(OrderStatus status) {
 
 static bool loadPendingOrders(const StorageManager& storage,
         const TrainRecord& train, const Date& start_date,
-        OrderRecord orders[], int ids[], int& count) {
-    int total = 0;
-    if (!storage.loadAllOrders(orders, ids, total)) return false;
-    int outCount = 0;
-    for (int i = 0; i < total; ++i) {
+        std::vector<OrderRecord>& orders, std::vector<int>& ids, int& count) {
+    if (!storage.loadAllOrders(orders, ids)) return false;
+    std::vector<OrderRecord> filteredOrders;
+    std::vector<int> filteredIds;
+    for (size_t i = 0; i < orders.size(); ++i) {
         if (orders[i].train_id != train.train_id) continue;
         if (orders[i].status != OrderStatus::Pending) continue;
         Date orderStart = getRunStartDate(train, orders[i].from_idx, orders[i].date);
         if (!(orderStart == start_date)) continue;
-        orders[outCount] = orders[i];
-        ids[outCount] = ids[i];
-        outCount++;
+        filteredOrders.push_back(orders[i]);
+        filteredIds.push_back(ids[i]);
     }
-    count = outCount;
-    sortOrdersByTimestamp(orders, ids, count, false);
+    orders.swap(filteredOrders);
+    ids.swap(filteredIds);
+    count = static_cast<int>(orders.size());
+    sortOrdersByTimestamp(orders.data(), ids.data(), count, false);
     return true;
 }
 
@@ -668,13 +653,13 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
     order.from_idx = from_idx;
     order.to_idx = to_idx;
     order.num = num;
-    order.price = unit_price * num;
+    order.price = unit_price;
     order.timestamp = command.timestamp;
     if (seats >= num) {
         order.status = OrderStatus::Success;
         order.is_waiting = false;
         if (!storage_.addOrder(order)) return "-1";
-        return std::to_string(order.price);
+        return std::to_string(static_cast<long long>(unit_price) * num);
     }
     if (q == "true") {
         order.status = OrderStatus::Pending;
@@ -688,22 +673,18 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
 std::string TicketSystem::handleQueryOrder(const Command& command) {
     std::string user = command.getParam('u');
     if (!checkLogin(user)) return "-1";
-    OrderRecord* orders = new OrderRecord[10000];
-    int* ids = new int[10000];
-    int count = 0;
-    if (!loadUserOrders(storage_, user, orders, ids, count, true)) {
-        delete[] orders;
-        delete[] ids;
+    std::vector<OrderRecord> orders;
+    std::vector<int> ids;
+    if (!loadUserOrders(storage_, user, orders, ids, true)) {
         return "-1";
     }
+    int count = static_cast<int>(orders.size());
     std::string out = std::to_string(count);
     for (int i = 0; i < count; ++i) {
         OrderRecord& order = orders[i];
         std::string status = orderStatusString(order.status);
         TrainRecord train;
         if (!storage_.loadTrain(order.train_id, train)) {
-            delete[] orders;
-            delete[] ids;
             return "-1";
         }
         Date start_date = getRunStartDate(train, order.from_idx, order.date);
@@ -711,18 +692,14 @@ std::string TicketSystem::handleQueryOrder(const Command& command) {
         DateTime arrive = stationArrival(train, order.to_idx, start_date);
         out += "\n[" + status + "] " + order.train_id + " " + train.stations[order.from_idx] + " " + depart.toString() + " -> " + train.stations[order.to_idx] + " " + arrive.toString() + " " + std::to_string(order.price) + " " + std::to_string(order.num);
     }
-    delete[] orders;
-    delete[] ids;
     return out;
 }
 
 static void processWaitlist(StorageManager& storage, const TrainRecord& train, const Date& start_date) {
-    OrderRecord* orders = new OrderRecord[10000];
-    int* ids = new int[10000];
+    std::vector<OrderRecord> orders;
+    std::vector<int> ids;
     int count = 0;
     if (!loadPendingOrders(storage, train, start_date, orders, ids, count)) {
-        delete[] orders;
-        delete[] ids;
         return;
     }
     for (int i = 0; i < count; ++i) {
@@ -733,8 +710,6 @@ static void processWaitlist(StorageManager& storage, const TrainRecord& train, c
             storage.updateOrder(ids[i], orders[i]);
         }
     }
-    delete[] orders;
-    delete[] ids;
 }
 
 std::string TicketSystem::handleRefundTicket(const Command& command) {
@@ -742,32 +717,24 @@ std::string TicketSystem::handleRefundTicket(const Command& command) {
     if (!checkLogin(user)) return "-1";
     int index = 1;
     if (command.hasParam('n')) index = std::stoi(command.getParam('n'));
-    OrderRecord* orders = new OrderRecord[10000];
-    int* ids = new int[10000];
-    int count = 0;
-    if (!loadUserOrders(storage_, user, orders, ids, count, true)) {
-        delete[] orders;
-        delete[] ids;
+    std::vector<OrderRecord> orders;
+    std::vector<int> ids;
+    if (!loadUserOrders(storage_, user, orders, ids, true)) {
         return "-1";
     }
+    int count = static_cast<int>(orders.size());
     if (index < 1 || index > count) {
-        delete[] orders;
-        delete[] ids;
         return "-1";
     }
     OrderRecord order = orders[index - 1];
     int orderIdTarget = ids[index - 1];
     if (order.status == OrderStatus::Refunded) {
-        delete[] orders;
-        delete[] ids;
         return "-1";
     }
     bool was_success = (order.status == OrderStatus::Success);
     order.status = OrderStatus::Refunded;
     order.is_waiting = false;
     if (!storage_.updateOrder(orderIdTarget, order)) {
-        delete[] orders;
-        delete[] ids;
         return "-1";
     }
     if (was_success) {
@@ -777,8 +744,6 @@ std::string TicketSystem::handleRefundTicket(const Command& command) {
             processWaitlist(storage_, train, run_start);
         }
     }
-    delete[] orders;
-    delete[] ids;
     return "0";
 }
 

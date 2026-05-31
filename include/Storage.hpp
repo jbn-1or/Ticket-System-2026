@@ -2,6 +2,7 @@
 #define TICKET_SYSTEM_STORAGE_HPP
 
 #include <string>
+#include <vector>
 #include "Entities.hpp"
 #include "bpt.hpp"
 #include "MemoryRiver.hpp"
@@ -85,7 +86,8 @@ public:
     bool loadOrder(int order_id, OrderRecord& order) const;
     bool updateOrder(int order_id, const OrderRecord& order);
     bool loadAllTrains(TrainRecord trains[], int& count) const;
-    bool loadAllOrders(OrderRecord orders[], int ids[], int& count) const;
+    bool loadAllTrains(std::vector<TrainRecord>& trains) const;
+    bool loadAllOrders(std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
 
     bool enqueueWaitlist(const WaitlistRecord& wait);
     bool loadNextWaitlist(WaitlistRecord& wait) const;

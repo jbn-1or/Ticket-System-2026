@@ -297,30 +297,56 @@ bool StorageManager::loadAllTrains(TrainRecord trains[], int& count) const {
     trainRiver_.get_info(total, 1);
     if (total <= 0) return true;
     int offsetBase = sizeof(int);
-    for (int i = 0; i < total && count < 10000; ++i) {
+    for (int i = 0; i < total; ++i) {
         int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
         BinaryTrainRecord bin;
         trainRiver_.read(bin, position);
         if (bin.deleted) continue;
-        decodeTrain(bin, trains[count++]);
+        if (count < 10000) {
+            decodeTrain(bin, trains[count]);
+        }
+        ++count;
     }
     return true;
 }
 
-bool StorageManager::loadAllOrders(OrderRecord orders[], int ids[], int& count) const {
-    count = 0;
+bool StorageManager::loadAllTrains(std::vector<TrainRecord>& trains) const {
+    trains.clear();
+    int total = 0;
+    trainRiver_.get_info(total, 1);
+    if (total <= 0) return true;
+    trains.reserve(total);
+    int offsetBase = sizeof(int);
+    for (int i = 0; i < total; ++i) {
+        int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
+        BinaryTrainRecord bin;
+        trainRiver_.read(bin, position);
+        if (bin.deleted) continue;
+        TrainRecord train;
+        decodeTrain(bin, train);
+        trains.push_back(train);
+    }
+    return true;
+}
+
+bool StorageManager::loadAllOrders(std::vector<OrderRecord>& orders, std::vector<int>& ids) const {
+    orders.clear();
+    ids.clear();
     int total = 0;
     orderRiver_.get_info(total, 1);
     if (total <= 0) return true;
+    orders.reserve(total);
+    ids.reserve(total);
     int offsetBase = sizeof(int);
-    for (int i = 0; i < total && count < 10000; ++i) {
+    for (int i = 0; i < total; ++i) {
         int position = offsetBase + i * static_cast<int>(sizeof(BinaryOrderRecord));
         BinaryOrderRecord bin;
         orderRiver_.read(bin, position);
         if (bin.deleted) continue;
-        decodeOrder(bin, orders[count]);
-        ids[count] = bin.order_id;
-        count++;
+        OrderRecord order;
+        decodeOrder(bin, order);
+        orders.push_back(order);
+        ids.push_back(bin.order_id);
     }
     return true;
 }
