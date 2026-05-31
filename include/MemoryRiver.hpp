@@ -78,31 +78,20 @@ public:
     //位置索引意味着当输入正确的位置索引index，在以下三个函数中都能顺利的找到目标对象进行操作
     //位置索引index可以取为对象写入的起始位置
     int write(T &t) {
-        /* your code here */
-        file.open(file_name, ifstream::in | ofstream::out | fstream::binary);
-        if (!file.is_open()) {
-            return -1;
-        }
-        // 移动写指针到文件末尾（新对象写入末尾）
+        if (!ensureOpenRW()) return -1;
         file.seekp(0, std::ios::end);
         int index = static_cast<int>(file.tellp());
-        // 写入T类型对象
         file.write(reinterpret_cast<char*>(&t), sizeofT);
-        file.close();
+        file.flush();
         return index;
     }
 
     //用t的值更新位置索引index对应的对象，保证调用的index都是由write函数产生
     void update(T &t, const int index) {
-        /* your code here */
-        file.open(file_name, ifstream::in | ofstream::out | fstream::binary);
-        if (!file.is_open()) {
-            return;
-        }
-        file.seekp(index);
-        // 写入新的对象值覆盖原有内容
+        if (!ensureOpenRW()) return;
+        file.seekp(index, std::ios::beg);
         file.write(reinterpret_cast<char *>(&t), sizeofT);
-        file.close();
+        file.flush();
     }
 
     //读出位置索引index对应的T对象的值并赋值给t，保证调用的index都是由write函数产生

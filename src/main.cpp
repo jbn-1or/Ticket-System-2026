@@ -4,6 +4,9 @@
 #include "../include/System.hpp"
 
 int main() {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+
     ticket::CommandParser parser;
     ticket::TicketSystem system;
     system.initialize("data");
@@ -14,7 +17,7 @@ int main() {
         ticket::Command cmd = parser.parse(line);
         std::string out = system.execute(cmd);
         // output should be prefixed with [timestamp]
-        std::cout << "[" << cmd.timestamp << "] " << out << std::endl;
+        std::cout << "[" << cmd.timestamp << "] " << out << '\n';
         if (cmd.type == ticket::CommandType::Exit) break;
     }
 
