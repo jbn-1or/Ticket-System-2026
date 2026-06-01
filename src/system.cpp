@@ -426,7 +426,7 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     std::vector<TrainRecord> trains;
     if (!storage_.loadAllTrains(trains)) return "0";
-    struct Item { std::string line; int key1; int key2; std::string key3; };
+    struct Item { std::string line; int key1; std::string key2; };
     std::vector<Item> items;
     items.reserve(trains.size());
     for (size_t i = 0; i < trains.size(); ++i) {
@@ -444,9 +444,11 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         int duration = DateTimeUtils::dayOffset(depart.date, arrive.date) * 1440 + (arrive.time.hour * 60 + arrive.time.minute) - (depart.time.hour * 60 + depart.time.minute);
         std::string line = train.train_id + " " + from + " " + depart.toString() + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) + " " + std::to_string(seats);
         if (order == "time") {
-            items.push_back({ line, duration, price, train.train_id });
+            // 按时间排序：主要按耗时，其次按 Train ID
+            items.push_back({ line, duration, train.train_id });
         } else {
-            items.push_back({ line, price, duration, train.train_id });
+            // 按价格排序：主要按票价，其次按 Train ID
+            items.push_back({ line, price, train.train_id });
         }
     }
     if (items.empty()) {
@@ -456,8 +458,7 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         size_t best = i;
         for (size_t j = i + 1; j < items.size(); ++j) {
             if (items[j].key1 < items[best].key1
-                || (items[j].key1 == items[best].key1 && items[j].key2 < items[best].key2)
-                || (items[j].key1 == items[best].key1 && items[j].key2 == items[best].key2 && strcmp(items[j].key3.c_str(), items[best].key3.c_str()) < 0)) {
+                || (items[j].key1 == items[best].key1 && items[j].key2 < items[best].key2)) {
                 best = j;
             }
         }
@@ -500,6 +501,10 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_line2;
     std::string best_first_id;
     std::string best_second_id;
+
+    // query_transfer ordering is distinct from query_ticket:
+    // -p time: total time asc, total price asc, first train id asc, second train id asc
+    // -p cost: total price asc, total time asc, first train id asc, second train id asc
     for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& first = trains[i];
         if (!first.released) continue;
@@ -523,31 +528,27 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                 DateTime second_arrive = stationArrival(second, end_idx, second_start);
                 int first_price = routePrice(first, start_idx, mid);
                 int second_price = routePrice(second, mid_idx, end_idx);
+                int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
+                int seats2 = availableSeats(storage_, second, second_start, mid_idx, end_idx);
+                if (seats1 <= 0 || seats2 <= 0) continue;
                 int total_price = first_price + second_price;
                 int total_time = DateTimeUtils::dayOffset(first_depart.date, second_arrive.date) * 1440 + (second_arrive.time.hour * 60 + second_arrive.time.minute) - (first_depart.time.hour * 60 + first_depart.time.minute);
-                std::string line1 = first.train_id + " " + from + " " + first_depart.toString() + " -> " + first.stations[mid] + " " + first_arrive.toString() + " " + std::to_string(first_price) + " " + std::to_string(availableSeats(storage_, first, first_start, start_idx, mid));
-                std::string line2 = second.train_id + " " + first.stations[mid] + " " + second_depart.toString() + " -> " + to + " " + second_arrive.toString() + " " + std::to_string(second_price) + " " + std::to_string(availableSeats(storage_, second, second_start, mid_idx, end_idx));
+                std::string line1 = first.train_id + " " + from + " " + first_depart.toString() + " -> " + first.stations[mid] + " " + first_arrive.toString() + " " + std::to_string(first_price) + " " + std::to_string(seats1);
+                std::string line2 = second.train_id + " " + first.stations[mid] + " " + second_depart.toString() + " -> " + to + " " + second_arrive.toString() + " " + std::to_string(second_price) + " " + std::to_string(seats2);
+                int main_key = (order == "time" ? total_time : total_price);
+                int sec_key = (order == "time" ? total_price : total_time);
+                auto candidate_key = std::make_tuple(main_key, sec_key, first.train_id, second.train_id);
                 if (!found) {
                     found = true;
-                    best_main = (order == "time" ? total_time : total_price);
-                    best_secondary = (order == "time" ? total_price : total_time);
+                    best_main = main_key;
+                    best_secondary = sec_key;
                     best_first_id = first.train_id;
                     best_second_id = second.train_id;
                     best_line1 = line1;
                     best_line2 = line2;
                 } else {
-                    int main_key = (order == "time" ? total_time : total_price);
-                    int sec_key = (order == "time" ? total_price : total_time);
-                    bool better = false;
-                    if (main_key < best_main) better = true;
-                    else if (main_key == best_main) {
-                        if (sec_key < best_secondary) better = true;
-                        else if (sec_key == best_secondary) {
-                            if (strcmp(first.train_id.c_str(), best_first_id.c_str()) < 0) better = true;
-                            else if (first.train_id == best_first_id && strcmp(second.train_id.c_str(), best_second_id.c_str()) < 0) better = true;
-                        }
-                    }
-                    if (better) {
+                    auto best_key = std::make_tuple(best_main, best_secondary, best_first_id, best_second_id);
+                    if (candidate_key < best_key) {
                         best_main = main_key;
                         best_secondary = sec_key;
                         best_first_id = first.train_id;
