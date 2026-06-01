@@ -16,7 +16,6 @@ int main() {
         if (line.size() == 0) continue;
         ticket::Command cmd = parser.parse(line);
         std::string out = system.execute(cmd);
-        // output should be prefixed with [timestamp]
         std::cout << "[" << cmd.timestamp << "] " << out << '\n';
         if (cmd.type == ticket::CommandType::Exit) break;
     }

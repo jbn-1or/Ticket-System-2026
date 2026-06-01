@@ -24,10 +24,16 @@ static std::filesystem::path makeDataPath(const std::string& base, const char* f
 
 static void copyStringField(const std::string& source, char* dest, int size) {
     int len = static_cast<int>(source.size());
-    if (len >= size) len = size - 1;
-    if (len > 0) memcpy(dest, source.data(), len);
+    if (len >= size) {
+        len = size - 1;
+    }
+    if (len > 0) {
+        memcpy(dest, source.data(), len);
+    }
     dest[len] = '\0';
-    if (len + 1 < size) memset(dest + len + 1, 0, size - len - 1);
+    if (len + 1 < size) {
+        memset(dest + len + 1, 0, size - len - 1);
+    }
 }
 
 static std::string readStringField(const char* source) {
@@ -65,8 +71,11 @@ static Date addDays(const Date& date, int offset) {
     if (offset >= 0) {
         while (offset > 0) {
             int month_len = 31;
-            if (month == 2) month_len = 28;
-            else if (month == 4 || month == 6 || month == 9 || month == 11) month_len = 30;
+            if (month == 2) {
+                month_len = 28;
+            } else if (month == 4 || month == 6 || month == 9 || month == 11) {
+                month_len = 30;
+            }
             int remain = month_len - day;
             if (offset <= remain) {
                 day += offset;

@@ -34,22 +34,38 @@ bool Command::hasParam(char key) const {
 }
 
 CommandType CommandParser::toType(const std::string& name) {
-    if (name == "add_user") return CommandType::AddUser;
-    if (name == "login") return CommandType::Login;
-    if (name == "logout") return CommandType::Logout;
-    if (name == "query_profile") return CommandType::QueryProfile;
-    if (name == "modify_profile") return CommandType::ModifyProfile;
-    if (name == "add_train") return CommandType::AddTrain;
-    if (name == "delete_train") return CommandType::DeleteTrain;
-    if (name == "release_train") return CommandType::ReleaseTrain;
-    if (name == "query_train") return CommandType::QueryTrain;
-    if (name == "query_ticket") return CommandType::QueryTicket;
-    if (name == "query_transfer") return CommandType::QueryTransfer;
-    if (name == "buy_ticket") return CommandType::BuyTicket;
-    if (name == "query_order") return CommandType::QueryOrder;
-    if (name == "refund_ticket") return CommandType::RefundTicket;
-    if (name == "clean") return CommandType::Clean;
-    if (name == "exit") return CommandType::Exit;
+    if (name == "add_user") 
+        return CommandType::AddUser;
+    if (name == "login") 
+        return CommandType::Login;
+    if (name == "logout") 
+        return CommandType::Logout;
+    if (name == "query_profile") 
+        return CommandType::QueryProfile;
+    if (name == "modify_profile") 
+        return CommandType::ModifyProfile;
+    if (name == "add_train") 
+        return CommandType::AddTrain;
+    if (name == "delete_train") 
+        return CommandType::DeleteTrain;
+    if (name == "release_train") 
+        return CommandType::ReleaseTrain;
+    if (name == "query_train") 
+        return CommandType::QueryTrain;
+    if (name == "query_ticket") 
+        return CommandType::QueryTicket;
+    if (name == "query_transfer") 
+        return CommandType::QueryTransfer;
+    if (name == "buy_ticket") 
+        return CommandType::BuyTicket;
+    if (name == "query_order") 
+        return CommandType::QueryOrder;
+    if (name == "refund_ticket") 
+        return CommandType::RefundTicket;
+    if (name == "clean") 
+        return CommandType::Clean;
+    if (name == "exit") 
+        return CommandType::Exit;
     return CommandType::Unknown;
 }
 

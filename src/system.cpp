@@ -50,7 +50,9 @@ static int arrivalOffsetMinutes(const TrainRecord& train, int station_idx) {
     int minutes = 0;
     for (int i = 0; i < station_idx; ++i) {
         minutes += train.travel_times[i];
-        if (i + 1 < station_idx) minutes += train.stopover_times[i];
+        if (i + 1 < station_idx) {
+            minutes += train.stopover_times[i];
+        }
     }
     return minutes;
 }
@@ -450,23 +452,32 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     std::vector<TrainRecord> trains;
     if (!storage_.loadTrainsByStation(from, trains)) return "0";
-    struct Item { std::string line; int key1; std::string key2; };
+    struct Item { 
+        std::string line;
+        int key1;
+        std::string key2;
+    };
     std::vector<Item> items;
     items.reserve(trains.size());
     for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& train = trains[i];
-        if (!train.released) continue;
+        if (!train.released) 
+            continue;
         int from_idx = findStation(train, from);
         int to_idx = findStation(train, to);
-        if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx) continue;
-        if (!canRunOnDate(train, from_idx, date)) continue;
+        if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx)
+            continue;
+        if (!canRunOnDate(train, from_idx, date))
+            continue;
         Date start_date = getRunStartDate(train, from_idx, date);
         DateTime depart = stationDeparture(train, from_idx, start_date);
         DateTime arrive = stationArrival(train, to_idx, start_date);
         int price = routePrice(train, from_idx, to_idx);
         int seats = availableSeats(storage_, train, start_date, from_idx, to_idx);
         int duration = DateTimeUtils::dayOffset(depart.date, arrive.date) * 1440 + (arrive.time.hour * 60 + arrive.time.minute) - (depart.time.hour * 60 + depart.time.minute);
-        std::string line = train.train_id + " " + from + " " + depart.toString() + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) + " " + std::to_string(seats);
+        std::string line = train.train_id + " " + from + " " + depart.toString() 
+            + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) 
+            + " " + std::to_string(seats);
         if (order == "time") {
             // 按时间排序：主要按耗时，其次按 Train ID
             items.push_back({ line, duration, train.train_id });
@@ -478,11 +489,14 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     if (items.empty()) {
         return "0";
     }
+
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
         if (a.key1 != b.key1) return a.key1 < b.key1;
         return a.key2 < b.key2;
     });
+
     std::string out = std::to_string(static_cast<int>(items.size()));
+    
     for (size_t i = 0; i < items.size(); ++i) {
         out += "\n" + items[i].line;
     }
@@ -509,9 +523,11 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     std::vector<TrainRecord> firstTrains;
-    if (!storage_.loadTrainsByStation(from, firstTrains)) return "0";
+    if (!storage_.loadTrainsByStation(from, firstTrains)) 
+        return "0";
     std::vector<TrainRecord> secondTrains;
-    if (!storage_.loadTrainsByStation(to, secondTrains)) return "0";
+    if (!storage_.loadTrainsByStation(to, secondTrains)) 
+        return "0";
     bool found = false;
     int best_main = 0;
     int best_secondary = 0;
@@ -520,39 +536,54 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_first_id;
     std::string best_second_id;
 
-    // query_transfer ordering is distinct from query_ticket:
-    // -p time: total time asc, total price asc, first train id asc, second train id asc
-    // -p cost: total price asc, total time asc, first train id asc, second train id asc
     for (size_t i = 0; i < firstTrains.size(); ++i) {
         TrainRecord& first = firstTrains[i];
-        if (!first.released) continue;
+        if (!first.released) 
+            continue;
         int start_idx = findStation(first, from);
-        if (start_idx < 0) continue;
-        if (!canRunOnDate(first, start_idx, date)) continue;
+        if (start_idx < 0) 
+            continue;
+        if (!canRunOnDate(first, start_idx, date)) 
+            continue;
         Date first_start = getRunStartDate(first, start_idx, date);
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
         for (int mid = start_idx + 1; mid < first.station_num - 1; ++mid) {
             DateTime first_arrive = stationArrival(first, mid, first_start);
             for (size_t j = 0; j < secondTrains.size(); ++j) {
                 TrainRecord& second = secondTrains[j];
-                if (!second.released) continue;
-                if (first.train_id == second.train_id) continue;
+                if (!second.released) 
+                    continue;
+                if (first.train_id == second.train_id) 
+                    continue;
                 int mid_idx = findStation(second, first.stations[mid]);
                 int end_idx = findStation(second, to);
-                if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx) continue;
+                if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx) 
+                    continue;
                 DateTime second_depart = bestSecondDeparture(second, mid_idx, first_arrive);
-                if (second_depart.date.month == 0) continue;
+                if (second_depart.date.month == 0) 
+                    continue;
+                
                 Date second_start = getRunStartDate(second, mid_idx, second_depart.date);
                 DateTime second_arrive = stationArrival(second, end_idx, second_start);
                 int first_price = routePrice(first, start_idx, mid);
                 int second_price = routePrice(second, mid_idx, end_idx);
                 int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
                 int seats2 = availableSeats(storage_, second, second_start, mid_idx, end_idx);
-                if (seats1 <= 0 || seats2 <= 0) continue;
+                
+                if (seats1 <= 0 || seats2 <= 0) 
+                    continue;
                 int total_price = first_price + second_price;
-                int total_time = DateTimeUtils::dayOffset(first_depart.date, second_arrive.date) * 1440 + (second_arrive.time.hour * 60 + second_arrive.time.minute) - (first_depart.time.hour * 60 + first_depart.time.minute);
-                std::string line1 = first.train_id + " " + from + " " + first_depart.toString() + " -> " + first.stations[mid] + " " + first_arrive.toString() + " " + std::to_string(first_price) + " " + std::to_string(seats1);
-                std::string line2 = second.train_id + " " + first.stations[mid] + " " + second_depart.toString() + " -> " + to + " " + second_arrive.toString() + " " + std::to_string(second_price) + " " + std::to_string(seats2);
+                int total_time = DateTimeUtils::dayOffset(first_depart.date, second_arrive.date) * 1440 
+                    + (second_arrive.time.hour * 60 + second_arrive.time.minute) 
+                    - (first_depart.time.hour * 60 + first_depart.time.minute);
+
+                std::string line1 = first.train_id + " " + from + " " + first_depart.toString()
+                    + " -> " + first.stations[mid] + " " + first_arrive.toString() + " "
+                    + std::to_string(first_price) + " " + std::to_string(seats1);
+                std::string line2 = second.train_id + " " + first.stations[mid] + " "
+                    + second_depart.toString() + " -> " + to + " " + second_arrive.toString() + " "
+                    + std::to_string(second_price) + " " + std::to_string(seats2);
+
                 int main_key = (order == "time" ? total_time : total_price);
                 int sec_key = (order == "time" ? total_price : total_time);
                 auto candidate_key = std::make_tuple(main_key, sec_key, first.train_id, second.train_id);
