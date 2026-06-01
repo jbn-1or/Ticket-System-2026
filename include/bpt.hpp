@@ -7,15 +7,9 @@
 #include <climits>
 #include <limits>
 
-const int M = 100;
-// 叶子节点限制
-const int MAX_KEY_LEAF = M;
-const int MIN_KEY_LEAF = (M + 1) / 2;
-// 内部节点数限制
-const int MAX_KEY_INTERNAL = M - 1;
-const int MIN_KEY_INTERNAL = M / 2 - 1;
-
+// 每个键的最大字节长度
 const int KEY_LEN = 65;
+// 磁盘块大小（字节），单个节点应当被限制在此大小内
 const int NODE_SIZE = 8192;
 
 struct FileHeader {
@@ -27,25 +21,44 @@ struct FileHeader {
 
 template<typename ValueType = int>
 struct Node {
+    // 根据 NODE_SIZE、KEY_LEN 与 ValueType 大小计算每节点可容纳的最大键数（保守估计，编译期计算）
+    static constexpr size_t header_bytes() {
+        return sizeof(bool) + 3 * sizeof(int);
+    }
+    static constexpr size_t per_entry_bytes() {
+        return KEY_LEN + sizeof(ValueType) + sizeof(int); // key + value + child-slot
+    }
+    static constexpr int compute_max_keys() {
+        if (NODE_SIZE <= header_bytes() + per_entry_bytes() * 3) return 3; // 至少保留3个键以保证分裂/合并逻辑
+        return static_cast<int>((NODE_SIZE - header_bytes()) / per_entry_bytes());
+    }
+
+    static constexpr int MAX_KEY_LEAF_T = compute_max_keys();
+    static constexpr int MIN_KEY_LEAF_T = (MAX_KEY_LEAF_T + 1) / 2;
+    static constexpr int MAX_KEY_INTERNAL_T = MAX_KEY_LEAF_T - 1;
+    static constexpr int MIN_KEY_INTERNAL_T = MAX_KEY_INTERNAL_T / 2 - 1;
+
     bool is_leaf;  // 是否为叶子
     int key_num;   // 实际存储的key数
     int next;  // 叶子链表
     int parent;  // -1表示无父
 
-    char keys[MAX_KEY_LEAF][KEY_LEN];
-    ValueType values[MAX_KEY_LEAF];
-    int children[MAX_KEY_INTERNAL + 1];// key数+1个儿子（仅内部节点有）
+    char keys[MAX_KEY_LEAF_T][KEY_LEN];
+    ValueType values[MAX_KEY_LEAF_T];
+    int children[MAX_KEY_INTERNAL_T + 1]; // key数+1个儿子（仅内部节点有）
 
     Node() {
         is_leaf = true;
         key_num = 0;
         next = -1;
         parent = -1;
-        for (int i = 0; i <= MAX_KEY_INTERNAL; i++) {
+        for (int i = 0; i <= MAX_KEY_INTERNAL_T; i++) {
             children[i] = -1;
         }
     }
 };
+
+static_assert(sizeof(Node<int>) <= NODE_SIZE, "B+Tree node size exceeds NODE_SIZE");
 
 template<typename ValueType = int>
 class FileManager {
@@ -53,9 +66,42 @@ private:
     std::fstream file;
     std::string filename;  // 文件名
     FileHeader header;     // 文件头
+    static constexpr size_t BLOCK_SIZE = sizeof(Node<ValueType>);
+    static constexpr int CACHE_SIZE = 16;
+
+    struct CacheEntry {
+        int pos;
+        Node<ValueType> node;
+        bool valid;
+    };
+    CacheEntry cache_[CACHE_SIZE];
+
+    inline int cacheIndex(int pos) const {
+        return pos % CACHE_SIZE;
+    }
+
+    bool tryGetCachedNode(int pos, Node<ValueType>& node) {
+        int idx = cacheIndex(pos);
+        if (cache_[idx].valid && cache_[idx].pos == pos) {
+            node = cache_[idx].node;
+            return true;
+        }
+        return false;
+    }
+
+    void updateCache(int pos, const Node<ValueType>& node) {
+        int idx = cacheIndex(pos);
+        cache_[idx].valid = true;
+        cache_[idx].pos = pos;
+        cache_[idx].node = node;
+    }
     
 public:
     FileManager(const std::string& fname) : filename(fname) {
+        for (int i = 0; i < CACHE_SIZE; ++i) {
+            cache_[i].valid = false;
+            cache_[i].pos = -1;
+        }
         bool exists = std::filesystem::exists(filename);
 
         file.open(filename, std::ios::in | std::ios::out | std::ios::binary);
@@ -118,15 +164,20 @@ public:
     
     // 读任意node
     void readNode(int pos, Node<ValueType>& node) {
+        if (tryGetCachedNode(pos, node)) {
+            return;
+        }
         // 计算偏移：文件头大小
-        file.seekg(sizeof(FileHeader) + pos * NODE_SIZE);
-        file.read(reinterpret_cast<char*>(&node), sizeof(Node<ValueType>));
+        file.seekg(sizeof(FileHeader) + pos * BLOCK_SIZE);
+        file.read(reinterpret_cast<char*>(&node), BLOCK_SIZE);
+        updateCache(pos, node);
     }
     
     // 将任意node写入
     void writeNode(int pos, const Node<ValueType>& node) {
-        file.seekp(sizeof(FileHeader) + pos * NODE_SIZE);
-        file.write(reinterpret_cast<const char*>(&node), sizeof(Node<ValueType>));
+        file.seekp(sizeof(FileHeader) + pos * BLOCK_SIZE);
+        file.write(reinterpret_cast<const char*>(&node), BLOCK_SIZE);
+        updateCache(pos, node);
     }
     
     int getRoot() {
@@ -269,7 +320,7 @@ private:
             
             fm.writeNode(parent_pos, parent);
             // 递归检查父节点是否也上溢
-            if (parent.key_num >= MAX_KEY_INTERNAL) {
+            if (parent.key_num >= Node<ValueType>::MAX_KEY_INTERNAL_T) {
                 Node<ValueType> grand_parent;
                 int grand_pos = -1;
                 if (parent.parent != -1) {
@@ -355,7 +406,7 @@ private:
         } else {
             fm.writeNode(parent_pos, parent);
             // 递归检查父节点是否下溢
-            int min_key = parent.is_leaf ? MIN_KEY_LEAF : MIN_KEY_INTERNAL;
+            int min_key = parent.is_leaf ? Node<ValueType>::MIN_KEY_LEAF_T : Node<ValueType>::MIN_KEY_INTERNAL_T;
             if (parent.key_num < min_key && parent.parent != -1) {
                 handleUnderflow(parent_pos);
             }
@@ -370,7 +421,7 @@ private:
         Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
         
-        int min_key = node.is_leaf ? MIN_KEY_LEAF : MIN_KEY_INTERNAL;
+        int min_key = node.is_leaf ? Node<ValueType>::MIN_KEY_LEAF_T : Node<ValueType>::MIN_KEY_INTERNAL_T;
 
         // 从左兄弟借
         if (parent_idx > 0) {
@@ -596,7 +647,7 @@ public:
         fm.writeNode(leaf_pos, leaf);
 
         // 检查是否上溢
-        if (leaf.key_num >= MAX_KEY_LEAF) {
+        if (leaf.key_num >= Node<ValueType>::MAX_KEY_LEAF_T) {
             // 找到叶子在父节点中的索引
             Node<ValueType> parent;
             int parent_pos = -1;
@@ -653,7 +704,7 @@ public:
         fm.writeNode(leaf_pos, leaf);
 
         // 是否下溢
-        if (leaf.key_num < MIN_KEY_LEAF) {
+        if (leaf.key_num < Node<ValueType>::MIN_KEY_LEAF_T) {
             handleUnderflow(leaf_pos);
         }
         

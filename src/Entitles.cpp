@@ -5,11 +5,7 @@ namespace ticket {
 UserRecord::UserRecord() : username(), password(), name(), mail(), privilege(0) {}
 
 TrainRecord::TrainRecord()
-	: train_id(), station_num(0), seat_num(0), start_time(), sale_begin(), sale_end(), type(' '), released(false) {
-	// initialize arrays
-	for (int i = 0; i < MAX_STATIONS; ++i) stations[i].clear();
-	for (int i = 0; i < MAX_PRICE_SEGMENTS; ++i) prices[i] = 0;
-	for (int i = 0; i < MAX_TRAVEL_SEGMENTS; ++i) travel_times[i] = stopover_times[i] = 0;
+    : train_id(), station_num(0), seat_num(0), start_time(), sale_begin(), sale_end(), type(' '), released(false) {
 }
 
 OrderRecord::OrderRecord()

@@ -2,8 +2,9 @@
 #define TICKET_SYSTEM_SYSTEM_HPP
 
 #include <string>
+#include <vector>
+#include <unordered_set>
 #include "Command.hpp"
-#include "Entities.hpp"
 #include "Storage.hpp"
 
 namespace ticket {
@@ -20,10 +21,8 @@ private:
     bool checkLogin(const std::string& username) const;
     int privilegeOf(const std::string& username) const;
 
-    // logged-in users (simple fixed-size storage to avoid STL containers)
-    static const int MAX_LOGGED = 10000;
-    std::string logged_users[MAX_LOGGED];
-    int logged_count = 0;
+    // logged-in users
+    std::unordered_set<std::string> logged_users;
 
     std::string handleAddUser(const Command& command);
     std::string handleLogin(const Command& command);

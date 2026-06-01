@@ -2,6 +2,7 @@
 #define TICKET_SYSTEM_ENTITIES_HPP
 
 #include <string>
+#include <vector>
 #include "DateTime.hpp"
 
 namespace ticket {
@@ -30,11 +31,11 @@ struct TrainRecord {
     std::string train_id;
     int station_num;
     int seat_num;
-    std::string stations[MAX_STATIONS];
-    int prices[MAX_PRICE_SEGMENTS];
+    std::vector<std::string> stations;
+    std::vector<int> prices;
     Time start_time;
-    int travel_times[MAX_TRAVEL_SEGMENTS];
-    int stopover_times[MAX_TRAVEL_SEGMENTS];
+    std::vector<int> travel_times;
+    std::vector<int> stopover_times;
     Date sale_begin;
     Date sale_end;
     char type;

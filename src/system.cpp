@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <vector>
 #include <cstring>
+#include <algorithm>
 
 namespace ticket {
 
@@ -21,6 +22,20 @@ static void splitString(const std::string& text, char delim, std::string parts[]
         }
     }
     if (count < maxCount) parts[count++] = current;
+}
+
+static void splitString(const std::string& text, char delim, std::vector<std::string>& parts, int maxCount) {
+    parts.clear();
+    std::string current;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == delim) {
+            if ((int)parts.size() < maxCount) parts.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(text[i]);
+        }
+    }
+    if ((int)parts.size() < maxCount) parts.push_back(current);
 }
 
 static int findStation(const TrainRecord& train, const std::string& station) {
@@ -152,10 +167,7 @@ std::string TicketSystem::execute(const Command& command) {
 }
 
 bool TicketSystem::checkLogin(const std::string& username) const {
-    for (int i = 0; i < logged_count; ++i) {
-        if (logged_users[i] == username) return true;
-    }
-    return false;
+    return logged_users.find(username) != logged_users.end();
 }
 
 int TicketSystem::privilegeOf(const std::string& username) const {
@@ -198,19 +210,14 @@ std::string TicketSystem::handleLogin(const Command& command) {
     if (!storage_.loadUser(u, ur)) return "-1";
     if (ur.password != p) return "-1";
     if (checkLogin(u)) return "-1";
-    if (logged_count >= MAX_LOGGED) return "-1";
-    logged_users[logged_count++] = u;
+    logged_users.insert(u);
     return "0";
 }
 
 std::string TicketSystem::handleLogout(const Command& command) {
     std::string u = command.getParam('u');
-    for (int i = 0; i < logged_count; ++i) {
-        if (logged_users[i] == u) {
-            for (int j = i; j + 1 < logged_count; ++j) logged_users[j] = logged_users[j + 1];
-            --logged_count;
-            return "0";
-        }
+    if (logged_users.erase(u) > 0) {
+        return "0";
     }
     return "-1";
 }
@@ -260,21 +267,28 @@ static bool lineToTrain(const std::string& line, TrainRecord& train) {
     train.type = fields[6].empty() ? ' ' : fields[6][0];
     train.released = (fields[7] == "1");
 
-    std::string stations[100]; int stationCount = 0;
-    splitString(fields[8], ';', stations, stationCount, 100);
-    for (int i = 0; i < stationCount; ++i) train.stations[i] = stations[i];
+    std::vector<std::string> stations;
+    splitString(fields[8], ';', stations, 100);
+    train.stations = std::move(stations);
+    train.station_num = static_cast<int>(train.stations.size());
 
-    std::string prices[100]; int priceCount = 0;
-    splitString(fields[9], ';', prices, priceCount, 100);
-    for (int i = 0; i < priceCount; ++i) train.prices[i] = std::stoi(prices[i]);
+    std::vector<std::string> prices;
+    splitString(fields[9], ';', prices, 100);
+    train.prices.clear();
+    train.prices.reserve(prices.size());
+    for (const auto& p : prices) train.prices.push_back(std::stoi(p));
 
-    std::string travels[100]; int travelCount = 0;
-    splitString(fields[10], ';', travels, travelCount, 100);
-    for (int i = 0; i < travelCount; ++i) train.travel_times[i] = std::stoi(travels[i]);
+    std::vector<std::string> travels;
+    splitString(fields[10], ';', travels, 100);
+    train.travel_times.clear();
+    train.travel_times.reserve(travels.size());
+    for (const auto& t : travels) train.travel_times.push_back(std::stoi(t));
 
-    std::string stopovers[100]; int stopoverCount = 0;
-    splitString(fields[11], ';', stopovers, stopoverCount, 100);
-    for (int i = 0; i < stopoverCount; ++i) train.stopover_times[i] = std::stoi(stopovers[i]);
+    std::vector<std::string> stopovers;
+    splitString(fields[11], ';', stopovers, 100);
+    train.stopover_times.clear();
+    train.stopover_times.reserve(stopovers.size());
+    for (const auto& s : stopovers) train.stopover_times.push_back(std::stoi(s));
     return true;
 }
 
@@ -300,7 +314,7 @@ static int computeSegmentOccupancy(const StorageManager& storage, const TrainRec
     for (int i = 0; i < train.station_num - 1; ++i) occupancy[i] = 0;
     std::vector<OrderRecord> orders;
     std::vector<int> ids;
-    if (!storage.loadAllOrders(orders, ids)) return 0;
+    if (!storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) return 0;
     for (size_t i = 0; i < orders.size(); ++i) {
         OrderRecord& order = orders[i];
         if (order.status != OrderStatus::Success) continue;
@@ -345,22 +359,32 @@ std::string TicketSystem::handleAddTrain(const Command& command) {
     train.sale_end = Date::parse(saleParts[1]);
     train.type = command.getParam('y')[0];
     train.released = false;
-    int stationCount = 0;
-    splitString(command.getParam('s'), '|', train.stations, stationCount, MAX_STATIONS);
-    int priceCount = 0;
-    std::string priceParts[100];
-    splitString(command.getParam('p'), '|', priceParts, priceCount, MAX_PRICE_SEGMENTS);
-    for (int i = 0; i < priceCount; ++i) train.prices[i] = std::stoi(priceParts[i]);
-    int travelCount = 0;
-    std::string travelParts[100];
-    splitString(command.getParam('t'), '|', travelParts, travelCount, MAX_TRAVEL_SEGMENTS);
-    for (int i = 0; i < travelCount; ++i) train.travel_times[i] = std::stoi(travelParts[i]);
-    int stopCount = 0;
-    std::string stopParts[100];
+    std::vector<std::string> stationParts;
+    splitString(command.getParam('s'), '|', stationParts, MAX_STATIONS);
+    train.stations = std::move(stationParts);
+    train.station_num = static_cast<int>(train.stations.size());
+
+    std::vector<std::string> priceParts;
+    splitString(command.getParam('p'), '|', priceParts, MAX_PRICE_SEGMENTS);
+    train.prices.clear();
+    train.prices.reserve(priceParts.size());
+    for (const auto& part : priceParts) train.prices.push_back(std::stoi(part));
+
+    std::vector<std::string> travelParts;
+    splitString(command.getParam('t'), '|', travelParts, MAX_TRAVEL_SEGMENTS);
+    train.travel_times.clear();
+    train.travel_times.reserve(travelParts.size());
+    for (const auto& part : travelParts) train.travel_times.push_back(std::stoi(part));
+
     std::string stopArg = command.getParam('o');
     if (stopArg != "_") {
-        splitString(stopArg, '|', stopParts, stopCount, MAX_TRAVEL_SEGMENTS);
-        for (int i = 0; i < stopCount; ++i) train.stopover_times[i] = std::stoi(stopParts[i]);
+        std::vector<std::string> stopParts;
+        splitString(stopArg, '|', stopParts, MAX_TRAVEL_SEGMENTS);
+        train.stopover_times.clear();
+        train.stopover_times.reserve(stopParts.size());
+        for (const auto& part : stopParts) train.stopover_times.push_back(std::stoi(part));
+    } else {
+        train.stopover_times.clear();
     }
     if (!storage_.addTrain(train)) return "-1";
     return "0";
@@ -425,7 +449,7 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     std::vector<TrainRecord> trains;
-    if (!storage_.loadAllTrains(trains)) return "0";
+    if (!storage_.loadTrainsByStation(from, trains)) return "0";
     struct Item { std::string line; int key1; std::string key2; };
     std::vector<Item> items;
     items.reserve(trains.size());
@@ -454,18 +478,10 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     if (items.empty()) {
         return "0";
     }
-    for (size_t i = 0; i + 1 < items.size(); ++i) {
-        size_t best = i;
-        for (size_t j = i + 1; j < items.size(); ++j) {
-            if (items[j].key1 < items[best].key1
-                || (items[j].key1 == items[best].key1 && items[j].key2 < items[best].key2)) {
-                best = j;
-            }
-        }
-        if (best != i) {
-            Item tmp = items[i]; items[i] = items[best]; items[best] = tmp;
-        }
-    }
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+        if (a.key1 != b.key1) return a.key1 < b.key1;
+        return a.key2 < b.key2;
+    });
     std::string out = std::to_string(static_cast<int>(items.size()));
     for (size_t i = 0; i < items.size(); ++i) {
         out += "\n" + items[i].line;
@@ -492,8 +508,10 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    std::vector<TrainRecord> trains;
-    if (!storage_.loadAllTrains(trains)) return "0";
+    std::vector<TrainRecord> firstTrains;
+    if (!storage_.loadTrainsByStation(from, firstTrains)) return "0";
+    std::vector<TrainRecord> secondTrains;
+    if (!storage_.loadTrainsByStation(to, secondTrains)) return "0";
     bool found = false;
     int best_main = 0;
     int best_secondary = 0;
@@ -505,8 +523,8 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     // query_transfer ordering is distinct from query_ticket:
     // -p time: total time asc, total price asc, first train id asc, second train id asc
     // -p cost: total price asc, total time asc, first train id asc, second train id asc
-    for (size_t i = 0; i < trains.size(); ++i) {
-        TrainRecord& first = trains[i];
+    for (size_t i = 0; i < firstTrains.size(); ++i) {
+        TrainRecord& first = firstTrains[i];
         if (!first.released) continue;
         int start_idx = findStation(first, from);
         if (start_idx < 0) continue;
@@ -515,8 +533,8 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
         for (int mid = start_idx + 1; mid < first.station_num - 1; ++mid) {
             DateTime first_arrive = stationArrival(first, mid, first_start);
-            for (size_t j = 0; j < trains.size(); ++j) {
-                TrainRecord& second = trains[j];
+            for (size_t j = 0; j < secondTrains.size(); ++j) {
+                TrainRecord& second = secondTrains[j];
                 if (!second.released) continue;
                 if (first.train_id == second.train_id) continue;
                 int mid_idx = findStation(second, first.stations[mid]);
@@ -573,29 +591,32 @@ static bool compareOrderTimestamp(const OrderRecord& left, const OrderRecord& ri
 }
 
 static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bool descending) {
-    for (int i = 0; i < count; ++i) {
-        for (int j = i + 1; j < count; ++j) {
-            if (compareOrderTimestamp(orders[j], orders[i], descending)) {
-                std::swap(orders[i], orders[j]);
-                std::swap(ids[i], ids[j]);
-            }
+    std::vector<int> idx(count);
+    for (int i = 0; i < count; ++i) idx[i] = i;
+    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+        if (orders[a].timestamp != orders[b].timestamp) {
+            return descending ? orders[a].timestamp > orders[b].timestamp
+                               : orders[a].timestamp < orders[b].timestamp;
         }
+        return ids[a] < ids[b];
+    });
+    std::vector<OrderRecord> sortedOrders;
+    std::vector<int> sortedIds;
+    sortedOrders.reserve(count);
+    sortedIds.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        sortedOrders.push_back(std::move(orders[idx[i]]));
+        sortedIds.push_back(ids[idx[i]]);
+    }
+    for (int i = 0; i < count; ++i) {
+        orders[i] = std::move(sortedOrders[i]);
+        ids[i] = sortedIds[i];
     }
 }
 
 static bool loadUserOrders(const StorageManager& storage, const std::string& username,
         std::vector<OrderRecord>& orders, std::vector<int>& ids, bool descending = true) {
-    if (!storage.loadAllOrders(orders, ids)) return false;
-    std::vector<OrderRecord> filteredOrders;
-    std::vector<int> filteredIds;
-    for (size_t i = 0; i < orders.size(); ++i) {
-        if (orders[i].username == username) {
-            filteredOrders.push_back(orders[i]);
-            filteredIds.push_back(ids[i]);
-        }
-    }
-    orders.swap(filteredOrders);
-    ids.swap(filteredIds);
+    if (!storage.loadOrdersByUser(username, orders, ids)) return false;
     int count = static_cast<int>(orders.size());
     sortOrdersByTimestamp(orders.data(), ids.data(), count, descending);
     return true;
@@ -610,7 +631,7 @@ static std::string orderStatusString(OrderStatus status) {
 static bool loadPendingOrders(const StorageManager& storage,
         const TrainRecord& train, const Date& start_date,
         std::vector<OrderRecord>& orders, std::vector<int>& ids, int& count) {
-    if (!storage.loadAllOrders(orders, ids)) return false;
+    if (!storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) return false;
     std::vector<OrderRecord> filteredOrders;
     std::vector<int> filteredIds;
     for (size_t i = 0; i < orders.size(); ++i) {
@@ -751,12 +772,12 @@ std::string TicketSystem::handleRefundTicket(const Command& command) {
 std::string TicketSystem::handleClean(const Command& command) {
     std::filesystem::remove_all(storage_.basePath());
     storage_.initialize(storage_.basePath());
-    logged_count = 0;
+    logged_users.clear();
     return "0";
 }
 
 std::string TicketSystem::handleExit(const Command& command) {
-    logged_count = 0;
+    logged_users.clear();
     return "bye";
 }
 

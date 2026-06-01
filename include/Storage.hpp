@@ -64,6 +64,9 @@ struct StoragePaths {
     static const char* USER_INDEX;
     static const char* TRAIN_INDEX;
     static const char* ORDER_INDEX;
+    static const char* ORDER_USER_INDEX;
+    static const char* TRAIN_STATION_INDEX;
+    static const char* ORDER_TRAIN_DATE_INDEX;
 };
 
 class StorageManager {
@@ -85,7 +88,9 @@ public:
     bool addOrder(const OrderRecord& order);
     bool loadOrder(int order_id, OrderRecord& order) const;
     bool updateOrder(int order_id, const OrderRecord& order);
-    bool loadAllTrains(TrainRecord trains[], int& count) const;
+    bool loadOrdersByUser(const std::string& username, std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
+    bool loadOrdersByTrainDate(const std::string& train_id, const Date& date, std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
+    bool loadTrainsByStation(const std::string& station, std::vector<TrainRecord>& trains) const;
     bool loadAllTrains(std::vector<TrainRecord>& trains) const;
     bool loadAllOrders(std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
 
@@ -104,6 +109,9 @@ private:
     BPlusTree<int>* userIndex_;
     BPlusTree<int>* trainIndex_;
     BPlusTree<int>* orderIndex_;
+    BPlusTree<int>* orderUserIndex_;
+    BPlusTree<int>* trainStationIndex_;
+    BPlusTree<int>* orderTrainDateIndex_;
     int next_order_id_;
 };
 
