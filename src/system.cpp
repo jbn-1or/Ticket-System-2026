@@ -613,13 +613,13 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         if (!first.released) 
             continue;
         int start_idx = findStation(first, from);
-        if (start_idx < 0) 
+        if (start_idx < 0)
             continue;
         if (!canRunOnDate(first, start_idx, date)) 
             continue;
         Date first_start = getRunStartDate(first, start_idx, date);
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
-        for (int mid = start_idx + 1; mid < first.station_num - 1; ++mid) {
+        for (int mid = start_idx + 1; mid < first.station_num; ++mid) {
             DateTime first_arrive = stationArrival(first, mid, first_start);
             for (size_t j = 0; j < secondTrains.size(); ++j) {
                 TrainRecord& second = secondTrains[j];
@@ -642,7 +642,7 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                 int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
                 int seats2 = availableSeats(storage_, second, second_start, mid_idx, end_idx);
                 
-                if (seats1 <= 0 || seats2 <= 0) 
+                if (seats1 <= 0 || seats2 <= 0)
                     continue;
                 int total_price = first_price + second_price;
                 int total_time = DateTimeUtils::dayOffset(first_depart.date, second_arrive.date) * 1440 
@@ -658,7 +658,6 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
 
                 int main_key = (order == "time" ? total_time : total_price);
                 int sec_key = (order == "time" ? total_price : total_time);
-                auto candidate_key = std::make_tuple(main_key, sec_key, first.train_id, second.train_id);
                 if (!found) {
                     found = true;
                     best_main = main_key;
@@ -668,8 +667,11 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                     best_line1 = line1;
                     best_line2 = line2;
                 } else {
-                    auto best_key = std::make_tuple(best_main, best_secondary, best_first_id, best_second_id);
-                    if (candidate_key < best_key) {
+                    bool isBetter = main_key < best_main ||
+                                   (main_key == best_main && sec_key < best_secondary) ||
+                                   (main_key == best_main && sec_key == best_secondary && first.train_id < best_first_id) ||
+                                   (main_key == best_main && sec_key == best_secondary && first.train_id == best_first_id && second.train_id < best_second_id);
+                    if (isBetter) {
                         best_main = main_key;
                         best_secondary = sec_key;
                         best_first_id = first.train_id;
