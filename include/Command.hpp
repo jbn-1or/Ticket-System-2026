@@ -25,16 +25,18 @@ enum class CommandType {
     Unknown
 };
 
+// 命令参数结构体，存储单个键值对参数
 struct CommandParam {
-    char key;
-    std::string value;
+    char key;            // 参数键
+    std::string value;   // 参数值
 };
 
+// 命令结构体，存储解析后的命令信息
 struct Command {
-    int timestamp;
-    CommandType type;
-    CommandParam params[16];
-    int param_count;
+    int timestamp;   // 时间戳
+    CommandType type;   // 命令类型
+    CommandParam params[16]; // 参数数组（最多16个）
+    int param_count;     // 实际参数数量
 
     Command();
     void clear();

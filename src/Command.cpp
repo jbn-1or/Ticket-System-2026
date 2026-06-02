@@ -1,15 +1,20 @@
-#include "../include/Command.hpp"
+#include "Command.hpp"
 
 namespace ticket {
 
+// 默认构造函数
+// 创建一个空的Command对象
 Command::Command() : timestamp(0), type(CommandType::Unknown), param_count(0) {}
 
+// 清空Command
 void Command::clear() {
     timestamp = 0;
     type = CommandType::Unknown;
     param_count = 0;
 }
 
+// key: 参数的键名，value: 参数的值
+// 向Command对象添加一个键值对参数，最多支持16个参数
 void Command::addParam(char key, const std::string& value) {
     if (param_count < 16) {
         params[param_count].key = key;
@@ -18,6 +23,8 @@ void Command::addParam(char key, const std::string& value) {
     }
 }
 
+// key: 要查找的参数键名
+// 根据键名获取参数值，不存在则返回空字符串
 const std::string& Command::getParam(char key) const {
     static std::string empty;
     for (int i = 0; i < param_count; ++i) {
@@ -26,6 +33,8 @@ const std::string& Command::getParam(char key) const {
     return empty;
 }
 
+// key: 要检查的参数键名
+// 检查Command对象是否包含指定键名的参数，存在返回true，否则返回false
 bool Command::hasParam(char key) const {
     for (int i = 0; i < param_count; ++i) {
         if (params[i].key == key) return true;
@@ -33,6 +42,8 @@ bool Command::hasParam(char key) const {
     return false;
 }
 
+// name: 命令名称字符串
+// 将命令名字符串转换为对应的CommandType枚举值，未知命令返回Unknown
 CommandType CommandParser::toType(const std::string& name) {
     if (name == "add_user") 
         return CommandType::AddUser;
@@ -69,15 +80,20 @@ CommandType CommandParser::toType(const std::string& name) {
     return CommandType::Unknown;
 }
 
+// c: 待检查的字符
+// 判断字符是否为空白字符,是返回true
 static bool isSpace(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
+// line: 待解析的命令行字符串
+// 解析命令行字符串，提取时间戳、命令类型和参数，返回Command对象
 Command CommandParser::parse(const std::string& line) const {
     Command cmd;
     size_t pos = 0;
     size_t len = line.size();
 
+    // 提取时间戳
     if (pos < len && line[pos] == '[') {
         size_t end_pos = line.find(']', pos);
         if (end_pos != std::string::npos) {
@@ -87,22 +103,30 @@ Command CommandParser::parse(const std::string& line) const {
         }
     }
 
-    while (pos < len && isSpace(line[pos])) pos++;
+    // 提取命令类型
+    while (pos < len && isSpace(line[pos])) 
+        pos++;
     size_t start = pos;
-    while (pos < len && !isSpace(line[pos])) pos++;
+    while (pos < len && !isSpace(line[pos])) 
+        pos++;
     if (start < pos) {
         std::string name = line.substr(start, pos - start);
         cmd.type = toType(name);
     }
 
+    // 提取参数
     while (pos < len) {
-        while (pos < len && isSpace(line[pos])) pos++;
-        if (pos + 1 >= len || line[pos] != '-') break;
+        while (pos < len && isSpace(line[pos])) 
+            pos++;
+        if (pos + 1 >= len || line[pos] != '-') 
+            break;
         char key = line[pos + 1];
         pos += 2;
-        while (pos < len && isSpace(line[pos])) pos++;
+        while (pos < len && isSpace(line[pos])) 
+            pos++;
         start = pos;
-        while (pos < len && !isSpace(line[pos])) pos++;
+        while (pos < len && !isSpace(line[pos])) 
+            pos++;
         if (start < pos) {
             cmd.addParam(key, line.substr(start, pos - start));
         }
@@ -112,4 +136,3 @@ Command CommandParser::parse(const std::string& line) const {
 }
 
 } // namespace ticket
-

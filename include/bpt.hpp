@@ -12,13 +12,15 @@ const int KEY_LEN = 65;
 // 磁盘块大小（字节），单个节点应当被限制在此大小内
 const int NODE_SIZE = 8192;
 
+// B+树文件头结构体，存储B+树的元数据
 struct FileHeader {
-    int root_pos;  // 根节点的编号0-based
-    int free_list;  // 空闲块链头
+    int root_pos;     // 根节点的编号（0-based）
+    int free_list;    // 空闲块链表头
     int total_blocks; // 文件总块数
-    int height;  // 高度，取根节点高度为1
+    int height;       // B+树高度（根节点高度为1）
 };
 
+// B+树节点结构体，存储节点数据（模板类）
 template<typename ValueType = int>
 struct Node {
     // 根据 NODE_SIZE、KEY_LEN 与 ValueType 大小计算每节点可容纳的最大键数（保守估计，编译期计算）
@@ -38,14 +40,14 @@ struct Node {
     static constexpr int MAX_KEY_INTERNAL_T = MAX_KEY_LEAF_T - 1;
     static constexpr int MIN_KEY_INTERNAL_T = MAX_KEY_INTERNAL_T / 2 - 1;
 
-    bool is_leaf;  // 是否为叶子
-    int key_num;   // 实际存储的key数
-    int next;  // 叶子链表
-    int parent;  // -1表示无父
+    bool is_leaf;                        // 是否为叶子节点
+    int key_num;                         // 实际存储的key数量
+    int next;                            // 叶子节点链表的下一个节点（仅叶子节点使用）
+    int parent;                          // 父节点编号（-1表示无父）
 
-    char keys[MAX_KEY_LEAF_T][KEY_LEN];
-    ValueType values[MAX_KEY_LEAF_T];
-    int children[MAX_KEY_INTERNAL_T + 1]; // key数+1个儿子（仅内部节点有）
+    char keys[MAX_KEY_LEAF_T][KEY_LEN];  // 键数组
+    ValueType values[MAX_KEY_LEAF_T];    // 值数组
+    int children[MAX_KEY_INTERNAL_T + 1];// 子节点索引数组（仅内部节点使用）
 
     Node() {
         is_leaf = true;
@@ -69,10 +71,11 @@ private:
     static constexpr size_t BLOCK_SIZE = sizeof(Node<ValueType>);
     static constexpr int CACHE_SIZE = 16;
 
+    // 缓存条目结构体，用于节点缓存
     struct CacheEntry {
-        int pos;
-        Node<ValueType> node;
-        bool valid;
+        int pos;                // 节点位置
+        Node<ValueType> node;   // 节点数据
+        bool valid;             // 缓存是否有效
     };
     CacheEntry cache_[CACHE_SIZE];
 

@@ -2,7 +2,6 @@
 #define TICKET_SYSTEM_SYSTEM_HPP
 
 #include <string>
-#include <vector>
 #include <unordered_set>
 #include "Command.hpp"
 #include "Storage.hpp"

@@ -5,9 +5,10 @@
 
 namespace ticket {
 
+// 日期
 struct Date {
-    int month;
-    int day;
+    int month;  // 月份
+    int day;    // 日期
 
     Date();
     Date(int month_, int day_);
@@ -17,6 +18,7 @@ struct Date {
     bool operator==(const Date& other) const;
 };
 
+// 时间
 struct Time {
     int hour;
     int minute;
@@ -29,9 +31,10 @@ struct Time {
     bool operator==(const Time& other) const;
 };
 
+// 组合日期和时间
 struct DateTime {
-    Date date;
-    Time time;
+    Date date;  // 日期
+    Time time;  // 时间
 
     DateTime();
     DateTime(const Date& date_, const Time& time_);
