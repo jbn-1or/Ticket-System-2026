@@ -68,7 +68,7 @@ static int arrivalOffsetMinutes(const TrainRecord& train, int station_idx) {
 }
 
 // train: 列车记录，station_idx: 站点索引
-// 计算从始发站到指定站点的出发时间偏移（分钟）
+// 计算从始发站到指定站点的离开时间偏移（分钟）
 static int departureOffsetMinutes(const TrainRecord& train, int station_idx) {
     int minutes = arrivalOffsetMinutes(train, station_idx);
     if (station_idx > 0 && station_idx < train.station_num - 1) {
@@ -126,8 +126,8 @@ static Time departureTimeAtStation(const TrainRecord& train, int station_idx) {
     return Time(total / 60, total % 60);
 }
 
-// train: 列车记录，station_idx: 站点索引，depart_date: 出发日期
-// 计算列车运行的起始日期（考虑跨天），返回Date对象
+// train: 列车记录，station_idx: 站点索引，depart_date: 该站点的出发日期
+// 根据到达中途某站的时间，反推列车的起点日期，返回Date对象
 static Date getRunStartDate(const TrainRecord& train, int station_idx, const Date& depart_date) {
     int offset = departureOffsetMinutes(train, station_idx);
     DateTime current(Date(depart_date.month, depart_date.day), departureTimeAtStation(train, station_idx));
@@ -136,7 +136,7 @@ static Date getRunStartDate(const TrainRecord& train, int station_idx, const Dat
 }
 
 // train: 列车记录，station_idx: 站点索引，start_date: 运行起始日期
-// 计算列车到达指定站点的日期时间，返回DateTime对象
+// 计算列车到达指定站点的时间，返回DateTime对象
 static DateTime stationArrival(const TrainRecord& train, int station_idx, const Date& start_date) {
     DateTime base(start_date, train.start_time);
     return addMinutes(base, arrivalOffsetMinutes(train, station_idx));
@@ -574,14 +574,14 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
 // train: 列车记录，station_idx: 站点索引，earliest: 最早允许的出发时间
 // 查找列车在指定站点最早可行的出发时间，返回DateTime对象，无可用时间返回无效日期
 static DateTime bestSecondDeparture(const TrainRecord& train, int station_idx, const DateTime& earliest) {
-    Date candidate = earliest.date;
-    if (candidate < train.sale_begin) candidate = train.sale_begin;
+    // 最早可行出发时间
+    Date candidate = getRunStartDate(train, station_idx, earliest.date);
+    if (candidate < train.sale_begin)
+        candidate = train.sale_begin;
     while (dateInRange(train.sale_begin, train.sale_end, candidate)) {
-        Date start_date = getRunStartDate(train, station_idx, candidate);
-        if (dateInRange(train.sale_begin, train.sale_end, start_date)) {
-            DateTime depart = stationDeparture(train, station_idx, start_date);
-            if (!(depart < earliest)) return depart;
-        }
+        DateTime depart = stationDeparture(train, station_idx, candidate);
+        if (!(depart < earliest)) 
+            return depart;
         candidate = addDays(candidate, 1);
     }
     return DateTime(Date(0, 0), Time(0, 0));
@@ -590,16 +590,19 @@ static DateTime bestSecondDeparture(const TrainRecord& train, int station_idx, c
 // command: 包含出发站、到达站、日期的命令对象
 // 处理查询中转车票请求，成功返回最优中转方案，无结果返回"0"
 std::string TicketSystem::handleQueryTransfer(const Command& command) {
+    // 读取命令参数：出发站、到达站、日期、排序方式
     std::string from = command.getParam('s');
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
+    // 加载出发站和到达站的列车记录
     std::vector<TrainRecord> firstTrains;
     if (!storage_.loadTrainsByStation(from, firstTrains)) 
         return "0";
     std::vector<TrainRecord> secondTrains;
     if (!storage_.loadTrainsByStation(to, secondTrains)) 
         return "0";
+    // 初始化最优中转方案的变量
     bool found = false;
     int best_main = 0;
     int best_secondary = 0;
@@ -607,19 +610,24 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_line2;
     std::string best_first_id;
     std::string best_second_id;
-
+    // 遍历出发站的列车，查找符合要求的中转方案
     for (size_t i = 0; i < firstTrains.size(); ++i) {
         TrainRecord& first = firstTrains[i];
-        if (!first.released) 
+        if (!first.released)
             continue;
         int start_idx = findStation(first, from);
         if (start_idx < 0)
             continue;
-        if (!canRunOnDate(first, start_idx, date)) 
-            continue;
+        // 得到列车的起点站出发时间
         Date first_start = getRunStartDate(first, start_idx, date);
+        // 计算列车到达from站的时间
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
+        // 判断列车是否在指定日期运行，并且到达时间不晚于查询日期
+        if (!(first_depart.date == date) || !dateInRange(first.sale_begin, first.sale_end, first_start))
+            continue;
+        // 遍历first列车的中间站,查找符合要求的中转方案
         for (int mid = start_idx + 1; mid < first.station_num; ++mid) {
+            // 计算第一辆列车到达中转站的时间
             DateTime first_arrive = stationArrival(first, mid, first_start);
             for (size_t j = 0; j < secondTrains.size(); ++j) {
                 TrainRecord& second = secondTrains[j];
@@ -631,17 +639,19 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                 int end_idx = findStation(second, to);
                 if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx) 
                     continue;
+                // 查找第二辆列车在中转站最早可行的出发时间
                 DateTime second_depart = bestSecondDeparture(second, mid_idx, first_arrive);
                 if (second_depart.date.month == 0) 
                     continue;
-                
+
                 Date second_start = getRunStartDate(second, mid_idx, second_depart.date);
                 DateTime second_arrive = stationArrival(second, end_idx, second_start);
+
                 int first_price = routePrice(first, start_idx, mid);
                 int second_price = routePrice(second, mid_idx, end_idx);
                 int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
                 int seats2 = availableSeats(storage_, second, second_start, mid_idx, end_idx);
-                
+                // 检查是否有座位可用
                 if (seats1 <= 0 || seats2 <= 0)
                     continue;
                 int total_price = first_price + second_price;
