@@ -158,6 +158,7 @@ static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
     copyStringField(train.train_id, bin.train_id, sizeof(bin.train_id));
     bin.station_num = train.station_num;
     bin.seat_num = train.seat_num;
+    bin.max_seat_num = train.max_seat_num;
 
     for (int i = 0; i < MAX_STATIONS; ++i) {
         bin.stations[i][0] = '\0';
@@ -206,6 +207,7 @@ static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
     train.train_id = readStringField(bin.train_id);
     train.station_num = bin.station_num;
     train.seat_num = bin.seat_num;
+    train.max_seat_num = bin.max_seat_num;
     train.stations.clear();
     train.stations.reserve(train.station_num);
     for (int i = 0; i < train.station_num && i < MAX_STATIONS; ++i) {
@@ -372,14 +374,18 @@ bool StorageManager::updateUser(const UserRecord& user) {
 // 添加列车到存储，列车ID已存在返回false，成功返回true
 bool StorageManager::addTrain(const TrainRecord& train) {
     int position;
-    if (trainIndex_->find(train.train_id.c_str(), position)) return false;
+    if (trainIndex_->find(train.train_id.c_str(), position)) 
+        return false;
     BinaryTrainRecord bin;
     encodeTrain(train, bin);
     int offset = trainRiver_.write(bin);
-    if (offset < 0) return false;
-    if (!trainIndex_->insert(train.train_id.c_str(), offset)) return false;
+    if (offset < 0) 
+        return false;
+    if (!trainIndex_->insert(train.train_id.c_str(), offset)) 
+        return false;
     for (int i = 0; i < train.station_num; ++i) {
-        if (!trainStationIndex_->insert(train.stations[i].c_str(), offset)) return false;
+        if (!trainStationIndex_->insert(train.stations[i].c_str(), offset)) 
+            return false;
     }
     int trainCount = 0;
     trainRiver_.get_info(trainCount, 1);

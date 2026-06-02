@@ -303,67 +303,6 @@ std::string TicketSystem::handleModifyProfile(const Command& command) {
     return tr.username + " " + tr.name + " " + tr.mail + " " + std::to_string(tr.privilege);
 }
 
-// line: 包含列车信息的字符串，train: 输出列车记录
-// 解析字符串为列车记录，成功返回true，失败返回false
-static bool lineToTrain(const std::string& line, TrainRecord& train) {
-    std::string fields[12];
-    int count = 0;
-    splitString(line, '|', fields, count, 12);
-    if (count < 12) return false;
-    train.train_id = fields[0];
-    train.station_num = std::stoi(fields[1]);
-    train.seat_num = std::stoi(fields[2]);
-    train.start_time = Time::parse(fields[3]);
-    train.sale_begin = Date::parse(fields[4]);
-    train.sale_end = Date::parse(fields[5]);
-    train.type = fields[6].empty() ? ' ' : fields[6][0];
-    train.released = (fields[7] == "1");
-
-    std::vector<std::string> stations;
-    splitString(fields[8], ';', stations, 100);
-    train.stations = std::move(stations);
-    train.station_num = static_cast<int>(train.stations.size());
-
-    std::vector<std::string> prices;
-    splitString(fields[9], ';', prices, 100);
-    train.prices.clear();
-    train.prices.reserve(prices.size());
-    for (const auto& p : prices) train.prices.push_back(std::stoi(p));
-
-    std::vector<std::string> travels;
-    splitString(fields[10], ';', travels, 100);
-    train.travel_times.clear();
-    train.travel_times.reserve(travels.size());
-    for (const auto& t : travels) train.travel_times.push_back(std::stoi(t));
-
-    std::vector<std::string> stopovers;
-    splitString(fields[11], ';', stopovers, 100);
-    train.stopover_times.clear();
-    train.stopover_times.reserve(stopovers.size());
-    for (const auto& s : stopovers) train.stopover_times.push_back(std::stoi(s));
-    return true;
-}
-
-// line: 包含订单信息的字符串，order: 输出订单记录
-// 解析字符串为订单记录，成功返回true，失败返回false
-static bool lineToOrder(const std::string& line, OrderRecord& order) {
-    std::string fields[11];
-    int count = 0;
-    splitString(line, '|', fields, count, 11);
-    if (count < 11) return false;
-    order.username = fields[0];
-    order.train_id = fields[1];
-    order.date = Date::parse(fields[2]);
-    order.from_idx = std::stoi(fields[3]);
-    order.to_idx = std::stoi(fields[4]);
-    order.num = std::stoi(fields[5]);
-    order.price = std::stoi(fields[6]);
-    order.status = static_cast<OrderStatus>(std::stoi(fields[7]));
-    order.is_waiting = (fields[8] == "1");
-    order.timestamp = std::stoll(fields[9]);
-    return true;
-}
-
 // storage: 存储管理器，train: 列车记录，start_date: 运行起始日期，occupancy: 输出占用数组
 // 计算列车各段的座位占用情况，存入occupancy数组
 static int computeSegmentOccupancy(const StorageManager& storage, const TrainRecord& train, const Date& start_date, int occupancy[]) {
@@ -411,6 +350,7 @@ std::string TicketSystem::handleAddTrain(const Command& command) {
     train.train_id = command.getParam('i');
     train.station_num = std::stoi(command.getParam('n'));
     train.seat_num = std::stoi(command.getParam('m'));
+    train.max_seat_num = train.seat_num;
     train.start_time = Time::parse(command.getParam('x'));
     std::string saleDate = command.getParam('d');
     std::string saleParts[2];
@@ -784,14 +724,20 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
     std::string from = command.getParam('f');
     std::string to = command.getParam('t');
     std::string q = command.hasParam('q') ? command.getParam('q') : "false";
-    if (!checkLogin(user)) return "-1";
+    if (!checkLogin(user)) 
+        return "-1";
     TrainRecord train;
-    if (!storage_.loadTrain(train_id, train)) return "-1";
-    if (!train.released) return "-1";
+    
+    if (!storage_.loadTrain(train_id, train)) 
+        return "-1";
+    if (!train.released) 
+        return "-1";
     int from_idx = findStation(train, from);
     int to_idx = findStation(train, to);
-    if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx) return "-1";
-    if (!canRunOnDate(train, from_idx, date)) return "-1";
+    if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx) 
+        return "-1";
+    if (!canRunOnDate(train, from_idx, date)) 
+        return "-1";
     Date start_date = getRunStartDate(train, from_idx, date);
     int seats = availableSeats(storage_, train, start_date, from_idx, to_idx);
     int unit_price = routePrice(train, from_idx, to_idx);
@@ -804,16 +750,20 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
     order.num = num;
     order.price = unit_price;
     order.timestamp = command.timestamp;
+    if (num > train.max_seat_num) 
+        return "-1";
     if (seats >= num) {
         order.status = OrderStatus::Success;
         order.is_waiting = false;
-        if (!storage_.addOrder(order)) return "-1";
+        if (!storage_.addOrder(order)) 
+            return "-1";
         return std::to_string(static_cast<long long>(unit_price) * num);
     }
     if (q == "true") {
         order.status = OrderStatus::Pending;
         order.is_waiting = true;
-        if (!storage_.addOrder(order)) return "-1";
+        if (!storage_.addOrder(order)) 
+            return "-1";
         return "queue";
     }
     return "-1";

@@ -33,6 +33,7 @@ struct TrainRecord {
     std::string train_id; // 列车编号
     int station_num;  // 途经站数
     int seat_num;   // 座位数
+    int max_seat_num; // 最大座位数
     std::vector<std::string> stations; // 途经站名称列表
     std::vector<int> prices;  // 各段票价
     Time start_time;  // 发车时间

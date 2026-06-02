@@ -5,7 +5,7 @@ namespace ticket {
 UserRecord::UserRecord() : username(), password(), name(), mail(), privilege(0) {}
 
 TrainRecord::TrainRecord()
-    : train_id(), station_num(0), seat_num(0), start_time(), sale_begin(), sale_end(), type(' '), released(false) {
+    : train_id(), station_num(0), seat_num(0), max_seat_num(0), start_time(), sale_begin(), sale_end(), type(' '), released(false) {
 }
 
 OrderRecord::OrderRecord()

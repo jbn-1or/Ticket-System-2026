@@ -25,6 +25,7 @@ struct BinaryTrainRecord {
     char train_id[21];                 // 列车编号（最大20字符）
     int station_num;                   // 途经站数
     int seat_num;                      // 座位数
+    int max_seat_num;                  // 最大座位数
     char stations[MAX_STATIONS][32];   // 途经站名称数组
     int prices[MAX_PRICE_SEGMENTS];    // 各段票价数组
     int travel_times[MAX_TRAVEL_SEGMENTS];   // 各段行驶时间数组（分钟）
