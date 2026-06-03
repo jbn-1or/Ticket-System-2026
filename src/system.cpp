@@ -1,8 +1,8 @@
 #include "System.hpp"
 #include <filesystem>
-#include <vector>
+#include "vector.hpp"
 #include <cstring>
-#include <algorithm>
+#include <vector>
 
 namespace ticket {
 
@@ -451,6 +451,25 @@ std::string TicketSystem::handleQueryTrain(const Command& command) {
     return out;
 }
 
+struct Item { 
+    std::string line;
+    int key1;
+    std::string key2;
+};
+
+static void sortItem(std::vector<Item>& items) {
+    for (size_t i = 1; i < items.size(); ++i) {
+        Item tmp = std::move(items[i]);
+        size_t j = i;
+        while (j > 0 && (items[j - 1].key1 > tmp.key1 ||
+               (items[j - 1].key1 == tmp.key1 && items[j - 1].key2 > tmp.key2))) {
+            items[j] = std::move(items[j - 1]);
+            --j;
+        }
+        items[j] = std::move(tmp);
+    }
+}
+
 // command: 包含出发站、到达站、日期的命令对象
 // 处理查询车票请求，成功返回符合条件的列车列表，无结果返回"0"
 std::string TicketSystem::handleQueryTicket(const Command& command) {
@@ -460,11 +479,6 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     std::vector<TrainRecord> trains;
     if (!storage_.loadTrainsByStation(from, trains)) return "0";
-    struct Item { 
-        std::string line;
-        int key1;
-        std::string key2;
-    };
     std::vector<Item> items;
     for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& train = trains[i];
@@ -497,10 +511,7 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         return "0";
     }
 
-    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
-        if (a.key1 != b.key1) return a.key1 < b.key1;
-        return a.key2 < b.key2;
-    });
+    sortItem(items);
 
     std::string out = std::to_string(static_cast<int>(items.size()));
     
@@ -646,18 +657,33 @@ static bool compareOrderTimestamp(const OrderRecord& left, const OrderRecord& ri
     return left.timestamp < right.timestamp;
 }
 
+static void sortIdx(std::vector<int>& idx, const OrderRecord orders[], const int ids[], bool descending) {
+    for (size_t i = 1; i < idx.size(); ++i) {
+        int tmp = idx[i];
+        size_t j = i;
+        while (j > 0) {
+            bool needSwap;
+            if (orders[idx[j - 1]].timestamp != orders[tmp].timestamp) {
+                needSwap = descending ? orders[idx[j - 1]].timestamp < orders[tmp].timestamp
+                                      : orders[idx[j - 1]].timestamp > orders[tmp].timestamp;
+            } else {
+                needSwap = ids[idx[j - 1]] > ids[tmp];
+            }
+            if (!needSwap) break;
+            idx[j] = idx[j - 1];
+            --j;
+        }
+        idx[j] = tmp;
+    }
+}
+
 // orders: 订单数组，ids: 订单ID数组，count: 订单数量，descending: 是否降序
 // 按时间戳对订单数组进行排序
 static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bool descending) {
-    std::vector<int> idx(count);
-    for (int i = 0; i < count; ++i) idx[i] = i;
-    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
-        if (orders[a].timestamp != orders[b].timestamp) {
-            return descending ? orders[a].timestamp > orders[b].timestamp
-                               : orders[a].timestamp < orders[b].timestamp;
-        }
-        return ids[a] < ids[b];
-    });
+    std::vector<int> idx;
+    for (int i = 0; i < count; ++i) 
+        idx.push_back(i);
+    sortIdx(idx, orders, ids, descending);
     std::vector<OrderRecord> sortedOrders;
     std::vector<int> sortedIds;
     for (int i = 0; i < count; ++i) {
@@ -676,7 +702,7 @@ static bool loadUserOrders(const StorageManager& storage, const std::string& use
         std::vector<OrderRecord>& orders, std::vector<int>& ids, bool descending = true) {
     if (!storage.loadOrdersByUser(username, orders, ids)) return false;
     int count = static_cast<int>(orders.size());
-    sortOrdersByTimestamp(orders.data(), ids.data(), count, descending);
+    sortOrdersByTimestamp(&orders[0], &ids[0], count, descending);
     return true;
 }
 
@@ -704,10 +730,10 @@ static bool loadPendingOrders(const StorageManager& storage,
         filteredOrders.push_back(orders[i]);
         filteredIds.push_back(ids[i]);
     }
-    orders.swap(filteredOrders);
-    ids.swap(filteredIds);
+    orders = std::move(filteredOrders);
+    ids = std::move(filteredIds);
     count = static_cast<int>(orders.size());
-    sortOrdersByTimestamp(orders.data(), ids.data(), count, false);
+    sortOrdersByTimestamp(&orders[0], &ids[0], count, false);
     return true;
 }
 

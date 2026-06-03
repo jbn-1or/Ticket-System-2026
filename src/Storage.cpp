@@ -33,7 +33,7 @@ static void copyStringField(const std::string& source, char* dest, int size) {
     }
     // 复制字符串内容
     if (len > 0) {
-        memcpy(dest, source.data(), len);
+        memcpy(dest, source.c_str(), len);
     }
     dest[len] = '\0';
     // 其余空间清零
@@ -209,22 +209,18 @@ static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
     train.seat_num = bin.seat_num;
     train.max_seat_num = bin.max_seat_num;
     train.stations.clear();
-    train.stations.reserve(train.station_num);
     for (int i = 0; i < train.station_num && i < MAX_STATIONS; ++i) {
         train.stations.push_back(readStringField(bin.stations[i]));
     }
     int segmentCount = std::max(0, train.station_num - 1);
     train.prices.clear();
-    train.prices.reserve(segmentCount);
     train.travel_times.clear();
-    train.travel_times.reserve(segmentCount);
     for (int i = 0; i < segmentCount && i < MAX_PRICE_SEGMENTS; ++i) {
         train.prices.push_back(bin.prices[i]);
         train.travel_times.push_back(bin.travel_times[i]);
     }
     int stopCount = train.station_num > 1 ? train.station_num - 2 : 0;
     train.stopover_times.clear();
-    train.stopover_times.reserve(stopCount);
     for (int i = 0; i < stopCount && i < MAX_TRAVEL_SEGMENTS; ++i) {
         train.stopover_times.push_back(bin.stopover_times[i]);
     }
@@ -481,8 +477,8 @@ bool StorageManager::loadOrdersByUser(const std::string& username, std::vector<O
     orderRiver_.get_info(totalOrders, 1);
     if (totalOrders <= 0) return true;
 
-    std::vector<int> offsets(totalOrders);
-    int count = orderUserIndex_->findAll(username.c_str(), offsets.data(), totalOrders);
+    int* offsets = new int[totalOrders];
+    int count = orderUserIndex_->findAll(username.c_str(), offsets, totalOrders);
     for (int i = 0; i < count; ++i) {
         BinaryOrderRecord bin;
         orderRiver_.read(bin, offsets[i]);
@@ -492,6 +488,7 @@ bool StorageManager::loadOrdersByUser(const std::string& username, std::vector<O
         orders.push_back(order);
         ids.push_back(bin.order_id);
     }
+    delete[] offsets;
     return true;
 }
 
@@ -503,8 +500,8 @@ bool StorageManager::loadTrainsByStation(const std::string& station, std::vector
     trainRiver_.get_info(totalTrains, 1);
     if (totalTrains <= 0) return true;
 
-    std::vector<int> offsets(totalTrains);
-    int count = trainStationIndex_->findAll(station.c_str(), offsets.data(), totalTrains);
+    int* offsets = new int[totalTrains];
+    int count = trainStationIndex_->findAll(station.c_str(), offsets, totalTrains);
     for (int i = 0; i < count; ++i) {
         BinaryTrainRecord bin;
         trainRiver_.read(bin, offsets[i]);
@@ -513,6 +510,7 @@ bool StorageManager::loadTrainsByStation(const std::string& station, std::vector
         decodeTrain(bin, train);
         trains.push_back(train);
     }
+    delete[] offsets;
     return true;
 }
 
@@ -561,7 +559,6 @@ bool StorageManager::loadAllTrains(std::vector<TrainRecord>& trains) const {
     int total = 0;
     trainRiver_.get_info(total, 1);
     if (total <= 0) return true;
-    trains.reserve(total);
     int offsetBase = sizeof(int);
     for (int i = 0; i < total; ++i) {
         int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
@@ -583,8 +580,6 @@ bool StorageManager::loadAllOrders(std::vector<OrderRecord>& orders, std::vector
     int total = 0;
     orderRiver_.get_info(total, 1);
     if (total <= 0) return true;
-    orders.reserve(total);
-    ids.reserve(total);
     int offsetBase = sizeof(int);
     for (int i = 0; i < total; ++i) {
         int position = offsetBase + i * static_cast<int>(sizeof(BinaryOrderRecord));
