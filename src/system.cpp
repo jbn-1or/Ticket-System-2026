@@ -254,7 +254,7 @@ std::string TicketSystem::handleLogin(const Command& command) {
     if (!storage_.loadUser(u, ur)) return "-1";
     if (ur.password != p) return "-1";
     if (checkLogin(u)) return "-1";
-    logged_users.insert(u);
+    logged_users.insert({u, true});
     return "0";
 }
 

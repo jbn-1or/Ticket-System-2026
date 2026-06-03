@@ -2,7 +2,7 @@
 #define TICKET_SYSTEM_SYSTEM_HPP
 
 #include <string>
-#include <unordered_set>
+#include <map>
 #include "Command.hpp"
 #include "Storage.hpp"
 
@@ -21,7 +21,7 @@ private:
     int privilegeOf(const std::string& username) const;
 
     // logged-in users
-    std::unordered_set<std::string> logged_users;
+    std::map<std::string, bool> logged_users;
 
     std::string handleAddUser(const Command& command);
     std::string handleLogin(const Command& command);
