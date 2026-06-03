@@ -372,13 +372,11 @@ std::string TicketSystem::handleAddTrain(const Command& command) {
     std::vector<std::string> priceParts;
     splitString(command.getParam('p'), '|', priceParts, MAX_PRICE_SEGMENTS);
     train.prices.clear();
-    train.prices.reserve(priceParts.size());
     for (const auto& part : priceParts) train.prices.push_back(std::stoi(part));
 
     std::vector<std::string> travelParts;
     splitString(command.getParam('t'), '|', travelParts, MAX_TRAVEL_SEGMENTS);
     train.travel_times.clear();
-    train.travel_times.reserve(travelParts.size());
     for (const auto& part : travelParts) train.travel_times.push_back(std::stoi(part));
 
     std::string stopArg = command.getParam('o');
@@ -386,7 +384,6 @@ std::string TicketSystem::handleAddTrain(const Command& command) {
         std::vector<std::string> stopParts;
         splitString(stopArg, '|', stopParts, MAX_TRAVEL_SEGMENTS);
         train.stopover_times.clear();
-        train.stopover_times.reserve(stopParts.size());
         for (const auto& part : stopParts) train.stopover_times.push_back(std::stoi(part));
     } else {
         train.stopover_times.clear();
@@ -469,7 +466,6 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         std::string key2;
     };
     std::vector<Item> items;
-    items.reserve(trains.size());
     for (size_t i = 0; i < trains.size(); ++i) {
         TrainRecord& train = trains[i];
         if (!train.released) 
@@ -664,8 +660,6 @@ static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bo
     });
     std::vector<OrderRecord> sortedOrders;
     std::vector<int> sortedIds;
-    sortedOrders.reserve(count);
-    sortedIds.reserve(count);
     for (int i = 0; i < count; ++i) {
         sortedOrders.push_back(std::move(orders[idx[i]]));
         sortedIds.push_back(ids[idx[i]]);
