@@ -526,8 +526,8 @@ bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Da
     if (totalOrders <= 0) return true;
 
     std::string key = formatTrainDateKey(train_id, date);
-    std::vector<int> offsets(totalOrders);
-    int count = orderTrainDateIndex_->findAll(key.c_str(), offsets.data(), totalOrders);
+    int* offsets = new int[totalOrders];
+    int count = orderTrainDateIndex_->findAll(key.c_str(), offsets, totalOrders);
     for (int i = 0; i < count; ++i) {
         BinaryOrderRecord bin;
         orderRiver_.read(bin, offsets[i]);
@@ -537,6 +537,7 @@ bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Da
         orders.push_back(order);
         ids.push_back(bin.order_id);
     }
+    delete[] offsets;
     return true;
 }
 
