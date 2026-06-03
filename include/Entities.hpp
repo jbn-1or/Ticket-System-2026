@@ -2,7 +2,7 @@
 #define TICKET_SYSTEM_ENTITIES_HPP
 
 #include <string>
-#include <vector>
+#include "vector.hpp"
 #include "DateTime.hpp"
 
 namespace ticket {
@@ -34,11 +34,11 @@ struct TrainRecord {
     int station_num;  // 途经站数
     int seat_num;   // 座位数
     int max_seat_num; // 最大座位数
-    std::vector<std::string> stations; // 途经站名称列表
-    std::vector<int> prices;  // 各段票价
+    sjtu::vector<std::string> stations; // 途经站名称列表
+    sjtu::vector<int> prices;  // 各段票价
     Time start_time;  // 发车时间
-    std::vector<int> travel_times;  // 各段行驶时间（分钟）
-    std::vector<int> stopover_times;  // 各站停留时间（分钟）
+    sjtu::vector<int> travel_times;  // 各段行驶时间（分钟）
+    sjtu::vector<int> stopover_times;  // 各站停留时间（分钟）
     Date sale_begin; // 售票开始日期
     Date sale_end; // 售票结束日期
     char type; // 列车类型（G/D/T/K）

@@ -1,5 +1,4 @@
 #include "Storage.hpp"
-#include <algorithm>
 #include <fstream>
 #include <filesystem>
 #include <cstring>
@@ -61,15 +60,15 @@ static std::string formatOrderKey(int order_id) {
 // train_id: 列车ID，date: 日期
 // 格式化列车ID和日期为索引键，返回格式化后的字符串
 static std::string formatTrainDateKey(const std::string& train_id, const Date& date) {
-    std::string month_str = std::to_string(date.month);
-    if (month_str.size() < 2) 
-        month_str = "0" + month_str;
-    
-    std::string day_str = std::to_string(date.day);
-    if (day_str.size() < 2) 
-        day_str = "0" + day_str;
-    
-    return train_id + "|" + month_str + day_str;
+    std::string result;
+    result.reserve(train_id.size() + 6);  // train_id + "|" + MM + DD
+    result = train_id;
+    result += '|';
+    if (date.month < 10) result += '0';
+    result += std::to_string(date.month);
+    if (date.day < 10) result += '0';
+    result += std::to_string(date.day);
+    return result;
 }
 
 // train: 列车记录，station_idx: 站点索引
@@ -160,33 +159,38 @@ static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
     bin.seat_num = train.seat_num;
     bin.max_seat_num = train.max_seat_num;
 
-    for (int i = 0; i < MAX_STATIONS; ++i) {
-        bin.stations[i][0] = '\0';
-    }
-    for (int i = 0; i < bin.station_num && i < MAX_STATIONS; ++i) {
+    // 只写入有数据的站名，其余位置清零
+    int sn = bin.station_num > MAX_STATIONS ? MAX_STATIONS : bin.station_num;
+    for (int i = 0; i < sn; ++i) {
         copyStringField(train.stations[i], bin.stations[i], sizeof(bin.stations[i]));
     }
-
-    for (int i = 0; i < MAX_PRICE_SEGMENTS; ++i) {
-        bin.prices[i] = 0;
+    for (int i = sn; i < MAX_STATIONS; ++i) {
+        bin.stations[i][0] = '\0';
     }
-    for (int i = 0; i < std::min(bin.station_num - 1, MAX_PRICE_SEGMENTS); ++i) {
+
+    // 只写入有数据的区间，其余位置清零
+    int segCount = sn - 1;
+    if (segCount < 0) segCount = 0;
+    if (segCount > MAX_PRICE_SEGMENTS) segCount = MAX_PRICE_SEGMENTS;
+    for (int i = 0; i < segCount; ++i) {
         bin.prices[i] = train.prices[i];
-    }
-
-    for (int i = 0; i < MAX_TRAVEL_SEGMENTS; ++i) {
-        bin.travel_times[i] = 0;
-    }
-    for (int i = 0; i < std::min(bin.station_num - 1, MAX_TRAVEL_SEGMENTS); ++i) {
         bin.travel_times[i] = train.travel_times[i];
     }
-
-    for (int i = 0; i < MAX_TRAVEL_SEGMENTS; ++i) {
-        bin.stopover_times[i] = 0;
+    for (int i = segCount; i < MAX_PRICE_SEGMENTS; ++i) {
+        bin.prices[i] = 0;
     }
+    for (int i = segCount; i < MAX_TRAVEL_SEGMENTS; ++i) {
+        bin.travel_times[i] = 0;
+    }
+
+    // 只写入有数据的停留时间
     int stopCount = train.station_num > 1 ? train.station_num - 2 : 0;
-    for (int i = 0; i < std::min(stopCount, MAX_TRAVEL_SEGMENTS); ++i) {
+    if (stopCount > MAX_TRAVEL_SEGMENTS) stopCount = MAX_TRAVEL_SEGMENTS;
+    for (int i = 0; i < stopCount; ++i) {
         bin.stopover_times[i] = train.stopover_times[i];
+    }
+    for (int i = stopCount; i < MAX_TRAVEL_SEGMENTS; ++i) {
+        bin.stopover_times[i] = 0;
     }
 
     bin.start_hour = train.start_time.hour;
@@ -208,20 +212,28 @@ static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
     train.station_num = bin.station_num;
     train.seat_num = bin.seat_num;
     train.max_seat_num = bin.max_seat_num;
+
+    int sn = bin.station_num;
+    if (sn > MAX_STATIONS) sn = MAX_STATIONS;
     train.stations.clear();
-    for (int i = 0; i < train.station_num && i < MAX_STATIONS; ++i) {
+    for (int i = 0; i < sn; ++i) {
         train.stations.push_back(readStringField(bin.stations[i]));
     }
-    int segmentCount = std::max(0, train.station_num - 1);
+
+    int segCount = train.station_num - 1;
+    if (segCount < 0) segCount = 0;
+    if (segCount > MAX_PRICE_SEGMENTS) segCount = MAX_PRICE_SEGMENTS;
     train.prices.clear();
     train.travel_times.clear();
-    for (int i = 0; i < segmentCount && i < MAX_PRICE_SEGMENTS; ++i) {
+    for (int i = 0; i < segCount; ++i) {
         train.prices.push_back(bin.prices[i]);
         train.travel_times.push_back(bin.travel_times[i]);
     }
+
     int stopCount = train.station_num > 1 ? train.station_num - 2 : 0;
+    if (stopCount > MAX_TRAVEL_SEGMENTS) stopCount = MAX_TRAVEL_SEGMENTS;
     train.stopover_times.clear();
-    for (int i = 0; i < stopCount && i < MAX_TRAVEL_SEGMENTS; ++i) {
+    for (int i = 0; i < stopCount; ++i) {
         train.stopover_times.push_back(bin.stopover_times[i]);
     }
     train.start_time = Time(bin.start_hour, bin.start_minute);
@@ -470,7 +482,7 @@ bool StorageManager::loadOrder(int order_id, OrderRecord& order) const {
 
 // username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量
 // 加载指定用户的所有订单，成功返回true
-bool StorageManager::loadOrdersByUser(const std::string& username, std::vector<OrderRecord>& orders, std::vector<int>& ids) const {
+bool StorageManager::loadOrdersByUser(const std::string& username, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const {
     orders.clear();
     ids.clear();
     int totalOrders = 0;
@@ -494,7 +506,7 @@ bool StorageManager::loadOrdersByUser(const std::string& username, std::vector<O
 
 // station: 站点名称，trains: 输出列车向量
 // 加载经过指定站点的所有列车，成功返回true
-bool StorageManager::loadTrainsByStation(const std::string& station, std::vector<TrainRecord>& trains) const {
+bool StorageManager::loadTrainsByStation(const std::string& station, sjtu::vector<TrainRecord>& trains) const {
     trains.clear();
     int totalTrains = 0;
     trainRiver_.get_info(totalTrains, 1);
@@ -516,7 +528,7 @@ bool StorageManager::loadTrainsByStation(const std::string& station, std::vector
 
 // train_id: 列车ID，date: 日期，orders: 输出订单向量，ids: 输出订单ID向量
 // 加载指定列车指定日期的所有订单，成功返回true
-bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Date& date, std::vector<OrderRecord>& orders, std::vector<int>& ids) const {
+bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Date& date, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const {
     orders.clear();
     ids.clear();
     int totalOrders = 0;
@@ -554,7 +566,7 @@ bool StorageManager::updateOrder(int order_id, const OrderRecord& order) {
 
 // trains: 输出列车向量
 // 加载所有未删除的列车记录，成功返回true
-bool StorageManager::loadAllTrains(std::vector<TrainRecord>& trains) const {
+bool StorageManager::loadAllTrains(sjtu::vector<TrainRecord>& trains) const {
     trains.clear();
     int total = 0;
     trainRiver_.get_info(total, 1);
@@ -574,7 +586,7 @@ bool StorageManager::loadAllTrains(std::vector<TrainRecord>& trains) const {
 
 // orders: 输出订单向量，ids: 输出订单ID向量
 // 加载所有未删除的订单记录，成功返回true
-bool StorageManager::loadAllOrders(std::vector<OrderRecord>& orders, std::vector<int>& ids) const {
+bool StorageManager::loadAllOrders(sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const {
     orders.clear();
     ids.clear();
     int total = 0;

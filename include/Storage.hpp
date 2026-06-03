@@ -2,7 +2,7 @@
 #define TICKET_SYSTEM_STORAGE_HPP
 
 #include <string>
-#include <vector>
+#include "vector.hpp"
 #include "Entities.hpp"
 #include "bpt.hpp"
 #include "MemoryRiver.hpp"
@@ -93,11 +93,11 @@ public:
     bool addOrder(const OrderRecord& order);
     bool loadOrder(int order_id, OrderRecord& order) const;
     bool updateOrder(int order_id, const OrderRecord& order);
-    bool loadOrdersByUser(const std::string& username, std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
-    bool loadOrdersByTrainDate(const std::string& train_id, const Date& date, std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
-    bool loadTrainsByStation(const std::string& station, std::vector<TrainRecord>& trains) const;
-    bool loadAllTrains(std::vector<TrainRecord>& trains) const;
-    bool loadAllOrders(std::vector<OrderRecord>& orders, std::vector<int>& ids) const;
+    bool loadOrdersByUser(const std::string& username, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
+    bool loadOrdersByTrainDate(const std::string& train_id, const Date& date, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
+    bool loadTrainsByStation(const std::string& station, sjtu::vector<TrainRecord>& trains) const;
+    bool loadAllTrains(sjtu::vector<TrainRecord>& trains) const;
+    bool loadAllOrders(sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
 
     bool enqueueWaitlist(const WaitlistRecord& wait);
     bool loadNextWaitlist(WaitlistRecord& wait) const;

@@ -28,7 +28,7 @@ static void splitString(const std::string& text, char delim, std::string parts[]
 
 // text: 待分割的字符串，delim: 分隔符，parts: 输出向量，maxCount: 最大分割数
 // 按分隔符分割字符串，结果存入向量
-static void splitString(const std::string& text, char delim, std::vector<std::string>& parts, int maxCount) {
+static void splitString(const std::string& text, char delim, sjtu::vector<std::string>& parts, int maxCount) {
     parts.clear();
     std::string current;
     for (size_t i = 0; i < text.size(); ++i) {
@@ -42,8 +42,28 @@ static void splitString(const std::string& text, char delim, std::vector<std::st
     if ((int)parts.size() < maxCount) parts.push_back(current);
 }
 
+// train: 列车记录，from: 出发站名, to: 到达站名, from_idx: 输出出发站索引, to_idx: 输出到达站索引
+// 一次扫描同时查找 from 和 to 的索引，减少字符串比较次数
+static bool findFromTo(const TrainRecord& train, const std::string& from, const std::string& to,
+                       int& from_idx, int& to_idx) {
+    from_idx = -1;
+    to_idx = -1;
+    for (int i = 0; i < train.station_num; ++i) {
+        if (train.stations[i] == from) {
+            from_idx = i;
+            if (to_idx >= 0) break;
+        }
+        if (train.stations[i] == to) {
+            to_idx = i;
+            if (from_idx >= 0) break;
+        }
+    }
+    if (from_idx < 0) return false;
+    return to_idx > from_idx;
+}
+
 // train: 列车记录，station: 站点名称
-// 在列车站点列表中查找指定站点，返回索引，未找到返回-1
+// 单站查找（query_transfer 使用）
 static int findStation(const TrainRecord& train, const std::string& station) {
     for (int i = 0; i < train.station_num; ++i) {
         if (train.stations[i] == station) return i;
@@ -275,9 +295,15 @@ std::string TicketSystem::handleQueryProfile(const Command& command) {
     std::string cur = command.getParam('c');
     std::string target = command.getParam('u');
     if (!checkLogin(cur)) return "-1";
-    int curp = privilegeOf(cur);
     UserRecord tr;
     if (!storage_.loadUser(target, tr)) return "-1";
+    // 用已加载的 tr 判断权限，避免重复 B+ tree 查找
+    int curp;
+    if (cur == target) {
+        curp = tr.privilege;  // 同一个人，无需再查
+    } else {
+        curp = privilegeOf(cur);
+    }
     if (!(cur == target || curp > tr.privilege)) return "-1";
     return tr.username + " " + tr.name + " " + tr.mail + " " + std::to_string(tr.privilege);
 }
@@ -324,15 +350,12 @@ const OccupancyValue* TicketSystem::getSegmentOccupancy(
     val.station_num = train.station_num;
     for (int i = 0; i < train.station_num - 1; ++i) val.occupancy[i] = 0;
 
-    std::vector<OrderRecord> orders;
-    std::vector<int> ids;
+    sjtu::vector<OrderRecord> orders;
+    sjtu::vector<int> ids;
     if (storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) {
         for (size_t i = 0; i < orders.size(); ++i) {
             OrderRecord& order = orders[i];
             if (order.status != OrderStatus::Success) continue;
-            if (order.train_id != train.train_id) continue;
-            Date orderStart = getRunStartDate(train, order.from_idx, order.date);
-            if (!(orderStart == start_date)) continue;
             for (int s = order.from_idx; s < order.to_idx; ++s) {
                 if (s >= 0 && s < train.station_num - 1) val.occupancy[s] += order.num;
             }
@@ -340,12 +363,11 @@ const OccupancyValue* TicketSystem::getSegmentOccupancy(
     }
 
     segment_cache_.insert(sjtu::pair<const OccupancyKey, OccupancyValue>(key, val));
-    // 返回刚插入的元素的指针
     it = segment_cache_.find(key);
     return &(it->second);
 }
 
-// 增量更新区间占用缓存
+// 增量更新区间占用缓存（直接通过 operator[] 访问，不存在则忽略）
 void TicketSystem::updateSegmentOccupancy(
         const TrainRecord& train, const Date& start_date,
         int from_idx, int to_idx, int delta) {
@@ -369,14 +391,27 @@ void TicketSystem::clearSegmentCache() {
     segment_cache_.clear();
 }
 
-// 计算指定区间的可用座位数（从缓存读取）
-static int availableSeats(TicketSystem& sys, const StorageManager& storage,
+// 计算指定区间的可用座位数（直接从磁盘读取，无缓存）
+static int availableSeats(TicketSystem& /*sys*/, const StorageManager& storage,
         const TrainRecord& train, const Date& start_date,
         int from_idx, int to_idx) {
-    const OccupancyValue* cache = sys.getSegmentOccupancy(storage, train, start_date);
+    int occupancy[100] = {0};
+    sjtu::vector<OrderRecord> orders;
+    sjtu::vector<int> ids;
+    if (storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) {
+        for (size_t i = 0; i < orders.size(); ++i) {
+            OrderRecord& order = orders[i];
+            if (order.status != OrderStatus::Success) continue;
+            Date orderStart = getRunStartDate(train, order.from_idx, order.date);
+            if (!(orderStart == start_date)) continue;
+            for (int s = order.from_idx; s < order.to_idx; ++s) {
+                if (s >= 0 && s < train.station_num - 1) occupancy[s] += order.num;
+            }
+        }
+    }
     int available = train.seat_num;
     for (int i = from_idx; i < to_idx; ++i) {
-        int remain = train.seat_num - cache->occupancy[i];
+        int remain = train.seat_num - occupancy[i];
         if (remain < available) available = remain;
     }
     return available;
@@ -407,24 +442,24 @@ std::string TicketSystem::handleAddTrain(const Command& command) {
     train.sale_end = Date::parse(saleParts[1]);
     train.type = command.getParam('y')[0];
     train.released = false;
-    std::vector<std::string> stationParts;
+    sjtu::vector<std::string> stationParts;
     splitString(command.getParam('s'), '|', stationParts, MAX_STATIONS);
     train.stations = std::move(stationParts);
     train.station_num = static_cast<int>(train.stations.size());
 
-    std::vector<std::string> priceParts;
+    sjtu::vector<std::string> priceParts;
     splitString(command.getParam('p'), '|', priceParts, MAX_PRICE_SEGMENTS);
     train.prices.clear();
     for (const auto& part : priceParts) train.prices.push_back(std::stoi(part));
 
-    std::vector<std::string> travelParts;
+    sjtu::vector<std::string> travelParts;
     splitString(command.getParam('t'), '|', travelParts, MAX_TRAVEL_SEGMENTS);
     train.travel_times.clear();
     for (const auto& part : travelParts) train.travel_times.push_back(std::stoi(part));
 
     std::string stopArg = command.getParam('o');
     if (stopArg != "_") {
-        std::vector<std::string> stopParts;
+        sjtu::vector<std::string> stopParts;
         splitString(stopArg, '|', stopParts, MAX_TRAVEL_SEGMENTS);
         train.stopover_times.clear();
         for (const auto& part : stopParts) train.stopover_times.push_back(std::stoi(part));
@@ -500,7 +535,7 @@ struct Item {
     std::string key2;
 };
 
-static void sortItem(std::vector<Item>& items) {
+static void sortItem(sjtu::vector<Item>& items) {
     for (size_t i = 1; i < items.size(); ++i) {
         Item tmp = std::move(items[i]);
         size_t j = i;
@@ -520,16 +555,15 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    std::vector<TrainRecord> trains;
+    sjtu::vector<TrainRecord> trains;
     if (!storage_.loadTrainsByStation(from, trains)) return "0";
-    std::vector<Item> items;
+    sjtu::vector<Item> items;
     for (size_t i = 0; i < trains.size(); ++i) {
-        TrainRecord& train = trains[i];
+        const TrainRecord& train = trains[i];
         if (!train.released) 
             continue;
-        int from_idx = findStation(train, from);
-        int to_idx = findStation(train, to);
-        if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx)
+        int from_idx, to_idx;
+        if (!findFromTo(train, from, to, from_idx, to_idx))
             continue;
         if (!canRunOnDate(train, from_idx, date))
             continue;
@@ -589,10 +623,10 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
     // 加载出发站和到达站的列车记录
-    std::vector<TrainRecord> firstTrains;
+    sjtu::vector<TrainRecord> firstTrains;
     if (!storage_.loadTrainsByStation(from, firstTrains)) 
         return "0";
-    std::vector<TrainRecord> secondTrains;
+    sjtu::vector<TrainRecord> secondTrains;
     if (!storage_.loadTrainsByStation(to, secondTrains)) 
         return "0";
     // 初始化最优中转方案的变量
@@ -603,6 +637,23 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_line2;
     std::string best_first_id;
     std::string best_second_id;
+    // 预计算每个 second 列车中 to 站的索引，并过滤不包含 to 的列车
+    struct SecondInfo {
+        TrainRecord* train;
+        int end_idx;  // to 站的索引，-1 表示不包含
+    };
+    sjtu::vector<SecondInfo> secondInfos;
+    for (size_t j = 0; j < secondTrains.size(); ++j) {
+        TrainRecord& second = secondTrains[j];
+        if (!second.released) continue;
+        int ei = findStation(second, to);
+        if (ei < 0) continue;  // 不包含目标站，直接跳过
+        secondInfos.push_back({&second, ei});
+    }
+    if (secondInfos.empty()) {
+        return "0";
+    }
+
     // 遍历出发站的列车，查找符合要求的中转方案
     for (size_t i = 0; i < firstTrains.size(); ++i) {
         TrainRecord& first = firstTrains[i];
@@ -618,19 +669,24 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         // 判断列车是否在指定日期运行，并且到达时间不晚于查询日期
         if (!(first_depart.date == date) || !dateInRange(first.sale_begin, first.sale_end, first_start))
             continue;
+        // 提前计算 first 列车的站点价格前缀和（用于 routePrice）
         // 遍历first列车的中间站,查找符合要求的中转方案
         for (int mid = start_idx + 1; mid < first.station_num; ++mid) {
+            const std::string& mid_station = first.stations[mid];
             // 计算第一辆列车到达中转站的时间
             DateTime first_arrive = stationArrival(first, mid, first_start);
-            for (size_t j = 0; j < secondTrains.size(); ++j) {
-                TrainRecord& second = secondTrains[j];
-                if (!second.released) 
-                    continue;
+            int first_price = routePrice(first, start_idx, mid);
+            // 预计算 first 段的座位（提前到 mid 循环中，因为对每个 second 都一样）
+            int seats1 = availableSeats(*this, storage_, first, first_start, start_idx, mid);
+            if (seats1 <= 0) continue;  // 第一段就没座，跳过所有 second
+
+            for (size_t j = 0; j < secondInfos.size(); ++j) {
+                TrainRecord& second = *(secondInfos[j].train);
+                int end_idx = secondInfos[j].end_idx;
                 if (first.train_id == second.train_id) 
                     continue;
-                int mid_idx = findStation(second, first.stations[mid]);
-                int end_idx = findStation(second, to);
-                if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx) 
+                int mid_idx = findStation(second, mid_station);
+                if (mid_idx < 0 || mid_idx >= end_idx) 
                     continue;
                 // 查找第二辆列车在中转站最早可行的出发时间
                 DateTime second_depart = bestSecondDeparture(second, mid_idx, first_arrive);
@@ -640,12 +696,9 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
                 Date second_start = getRunStartDate(second, mid_idx, second_depart.date);
                 DateTime second_arrive = stationArrival(second, end_idx, second_start);
 
-                int first_price = routePrice(first, start_idx, mid);
                 int second_price = routePrice(second, mid_idx, end_idx);
-                int seats1 = availableSeats(*this, storage_, first, first_start, start_idx, mid);
                 int seats2 = availableSeats(*this, storage_, second, second_start, mid_idx, end_idx);
-                // 检查是否有座位可用
-                if (seats1 <= 0 || seats2 <= 0)
+                if (seats2 <= 0)
                     continue;
                 int total_price = first_price + second_price;
                 int total_time = DateTimeUtils::dayOffset(first_depart.date, second_arrive.date) * 1440 
@@ -700,7 +753,7 @@ static bool compareOrderTimestamp(const OrderRecord& left, const OrderRecord& ri
     return left.timestamp < right.timestamp;
 }
 
-static void sortIdx(std::vector<int>& idx, const OrderRecord orders[], const int ids[], bool descending) {
+static void sortIdx(sjtu::vector<int>& idx, const OrderRecord orders[], const int ids[], bool descending) {
     for (size_t i = 1; i < idx.size(); ++i) {
         int tmp = idx[i];
         size_t j = i;
@@ -720,32 +773,45 @@ static void sortIdx(std::vector<int>& idx, const OrderRecord orders[], const int
     }
 }
 
-// orders: 订单数组，ids: 订单ID数组，count: 订单数量，descending: 是否降序
-// 按时间戳对订单数组进行排序
-static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bool descending) {
-    std::vector<int> idx;
-    for (int i = 0; i < count; ++i) 
-        idx.push_back(i);
-    sortIdx(idx, orders, ids, descending);
-    std::vector<OrderRecord> sortedOrders;
-    std::vector<int> sortedIds;
+// orders: 订单数组引用，ids: 订单ID数组引用，descending: 是否降序
+// 按时间戳对订单数组进行原地排序（避免临时拷贝）
+static void sortOrdersByTimestamp(sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids, bool descending) {
+    int count = static_cast<int>(orders.size());
+    if (count <= 1) return;
+    // 构建索引数组
+    sjtu::vector<int> idx;
+    for (int i = 0; i < count; ++i) idx.push_back(i);
+    // 排序索引
+    sortIdx(idx, &orders[0], &ids[0], descending);
+    // 原地重排：使用 tag 标记已处理的元素
+    sjtu::vector<char> done;
+    for (int i = 0; i < count; ++i) done.push_back(0);
     for (int i = 0; i < count; ++i) {
-        sortedOrders.push_back(std::move(orders[idx[i]]));
-        sortedIds.push_back(ids[idx[i]]);
-    }
-    for (int i = 0; i < count; ++i) {
-        orders[i] = std::move(sortedOrders[i]);
-        ids[i] = sortedIds[i];
+        if (done[i] || idx[i] == i) continue;
+        // 循环移位
+        int j = i;
+        OrderRecord tmpOrder = std::move(orders[j]);
+        int tmpId = ids[j];
+        while (!done[j]) {
+            done[j] = true;
+            int next = idx[j];
+            if (done[next]) break;
+            orders[j] = std::move(orders[next]);
+            ids[j] = ids[next];
+            j = next;
+        }
+        orders[j] = std::move(tmpOrder);
+        ids[j] = tmpId;
+        done[j] = true;
     }
 }
 
 // storage: 存储管理器, username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量，descending: 是否降序
 // 加载用户的所有订单并按时间戳排序，成功返回true
 static bool loadUserOrders(const StorageManager& storage, const std::string& username,
-        std::vector<OrderRecord>& orders, std::vector<int>& ids, bool descending = true) {
+        sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids, bool descending = true) {
     if (!storage.loadOrdersByUser(username, orders, ids)) return false;
-    int count = static_cast<int>(orders.size());
-    sortOrdersByTimestamp(&orders[0], &ids[0], count, descending);
+    sortOrdersByTimestamp(orders, ids, descending);
     return true;
 }
 
@@ -761,10 +827,10 @@ static std::string orderStatusString(OrderStatus status) {
 // 加载指定列车指定日期的所有待处理订单，成功返回true
 static bool loadPendingOrders(const StorageManager& storage,
         const TrainRecord& train, const Date& start_date,
-        std::vector<OrderRecord>& orders, std::vector<int>& ids, int& count) {
+        sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids, int& count) {
     if (!storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) return false;
-    std::vector<OrderRecord> filteredOrders;
-    std::vector<int> filteredIds;
+    sjtu::vector<OrderRecord> filteredOrders;
+    sjtu::vector<int> filteredIds;
     for (size_t i = 0; i < orders.size(); ++i) {
         if (orders[i].train_id != train.train_id) continue;
         if (orders[i].status != OrderStatus::Pending) continue;
@@ -776,7 +842,7 @@ static bool loadPendingOrders(const StorageManager& storage,
     orders = std::move(filteredOrders);
     ids = std::move(filteredIds);
     count = static_cast<int>(orders.size());
-    sortOrdersByTimestamp(&orders[0], &ids[0], count, false);
+    sortOrdersByTimestamp(orders, ids, false);
     return true;
 }
 
@@ -798,9 +864,8 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
         return "-1";
     if (!train.released) 
         return "-1";
-    int from_idx = findStation(train, from);
-    int to_idx = findStation(train, to);
-    if (from_idx < 0 || to_idx < 0 || from_idx >= to_idx) 
+    int from_idx, to_idx;
+    if (!findFromTo(train, from, to, from_idx, to_idx)) 
         return "-1";
     if (!canRunOnDate(train, from_idx, date)) 
         return "-1";
@@ -842,8 +907,8 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
 std::string TicketSystem::handleQueryOrder(const Command& command) {
     std::string user = command.getParam('u');
     if (!checkLogin(user)) return "-1";
-    std::vector<OrderRecord> orders;
-    std::vector<int> ids;
+    sjtu::vector<OrderRecord> orders;
+    sjtu::vector<int> ids;
     if (!loadUserOrders(storage_, user, orders, ids, true)) {
         return "-1";
     }
@@ -867,8 +932,8 @@ std::string TicketSystem::handleQueryOrder(const Command& command) {
 // sys: 票务系统引用，storage: 存储管理器，train: 列车记录，start_date: 运行起始日期
 // 处理候补订单队列，将有座位的候补订单转为成功状态
 static void processWaitlist(TicketSystem& sys, StorageManager& storage, const TrainRecord& train, const Date& start_date) {
-    std::vector<OrderRecord> orders;
-    std::vector<int> ids;
+    sjtu::vector<OrderRecord> orders;
+    sjtu::vector<int> ids;
     int count = 0;
     if (!loadPendingOrders(storage, train, start_date, orders, ids, count)) {
         return;
@@ -892,8 +957,8 @@ std::string TicketSystem::handleRefundTicket(const Command& command) {
     if (!checkLogin(user)) return "-1";
     int index = 1;
     if (command.hasParam('n')) index = std::stoi(command.getParam('n'));
-    std::vector<OrderRecord> orders;
-    std::vector<int> ids;
+    sjtu::vector<OrderRecord> orders;
+    sjtu::vector<int> ids;
     if (!loadUserOrders(storage_, user, orders, ids, true)) {
         return "-1";
     }
