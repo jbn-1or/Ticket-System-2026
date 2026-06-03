@@ -205,7 +205,7 @@ std::string TicketSystem::execute(const Command& command) {
 // username: 用户名
 // 检查用户是否已登录，已登录返回true
 bool TicketSystem::checkLogin(const std::string& username) const {
-    return logged_users.find(username) != logged_users.end();
+    return logged_users.find(username) != logged_users.cend();
 }
 
 // username: 用户名
@@ -262,10 +262,13 @@ std::string TicketSystem::handleLogin(const Command& command) {
 // 处理用户登出请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleLogout(const Command& command) {
     std::string u = command.getParam('u');
-    if (logged_users.erase(u) > 0) {
+    auto it = logged_users.find(u);
+    if(it == logged_users.cend()) {
+        return "-1";
+    } else {
+        logged_users.erase(it);
         return "0";
     }
-    return "-1";
 }
 
 // command: 包含查询信息的命令对象
@@ -673,7 +676,7 @@ static void sortOrdersByTimestamp(OrderRecord orders[], int ids[], int count, bo
     }
 }
 
-// storage: 存储管理器，username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量，descending: 是否降序
+// storage: 存储管理器, username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量，descending: 是否降序
 // 加载用户的所有订单并按时间戳排序，成功返回true
 static bool loadUserOrders(const StorageManager& storage, const std::string& username,
         std::vector<OrderRecord>& orders, std::vector<int>& ids, bool descending = true) {

@@ -2,7 +2,7 @@
 #define TICKET_SYSTEM_SYSTEM_HPP
 
 #include <string>
-#include <map>
+#include <map.hpp>
 #include "Command.hpp"
 #include "Storage.hpp"
 
@@ -21,7 +21,7 @@ private:
     int privilegeOf(const std::string& username) const;
 
     // logged-in users
-    std::map<std::string, bool> logged_users;
+    sjtu::map<std::string, bool> logged_users;
 
     std::string handleAddUser(const Command& command);
     std::string handleLogin(const Command& command);
