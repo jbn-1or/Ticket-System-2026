@@ -1,8 +1,6 @@
 #include "System.hpp"
 #include <filesystem>
-#include "vector.hpp"
 #include <cstring>
-#include <vector>
 
 namespace ticket {
 
@@ -306,34 +304,79 @@ std::string TicketSystem::handleModifyProfile(const Command& command) {
     return tr.username + " " + tr.name + " " + tr.mail + " " + std::to_string(tr.privilege);
 }
 
-// storage: 存储管理器，train: 列车记录，start_date: 运行起始日期，occupancy: 输出占用数组
-// 计算列车各段的座位占用情况，存入occupancy数组
-static int computeSegmentOccupancy(const StorageManager& storage, const TrainRecord& train, const Date& start_date, int occupancy[]) {
-    for (int i = 0; i < train.station_num - 1; ++i) occupancy[i] = 0;
+// ===== P0: 区间占用缓存函数实现 =====
+
+// 从缓存获取占用数组，未命中则从磁盘构建
+const OccupancyValue* TicketSystem::getSegmentOccupancy(
+        const StorageManager& storage, const TrainRecord& train, const Date& start_date) {
+    OccupancyKey key;
+    std::strcpy(key.train_id, train.train_id.c_str());
+    key.month = start_date.month;
+    key.day = start_date.day;
+
+    auto it = segment_cache_.find(key);
+    if (it != segment_cache_.end()) {
+        return &(it->second);
+    }
+
+    // 缓存未命中：从磁盘加载订单并构建占用数组
+    OccupancyValue val;
+    val.station_num = train.station_num;
+    for (int i = 0; i < train.station_num - 1; ++i) val.occupancy[i] = 0;
+
     std::vector<OrderRecord> orders;
     std::vector<int> ids;
-    if (!storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) return 0;
-    for (size_t i = 0; i < orders.size(); ++i) {
-        OrderRecord& order = orders[i];
-        if (order.status != OrderStatus::Success) continue;
-        if (order.train_id != train.train_id) continue;
-        Date orderStart = getRunStartDate(train, order.from_idx, order.date);
-        if (!(orderStart == start_date)) continue;
-        for (int s = order.from_idx; s < order.to_idx; ++s) {
-            if (s >= 0 && s < train.station_num - 1) occupancy[s] += order.num;
+    if (storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) {
+        for (size_t i = 0; i < orders.size(); ++i) {
+            OrderRecord& order = orders[i];
+            if (order.status != OrderStatus::Success) continue;
+            if (order.train_id != train.train_id) continue;
+            Date orderStart = getRunStartDate(train, order.from_idx, order.date);
+            if (!(orderStart == start_date)) continue;
+            for (int s = order.from_idx; s < order.to_idx; ++s) {
+                if (s >= 0 && s < train.station_num - 1) val.occupancy[s] += order.num;
+            }
         }
     }
-    return 0;
+
+    segment_cache_.insert(sjtu::pair<const OccupancyKey, OccupancyValue>(key, val));
+    // 返回刚插入的元素的指针
+    it = segment_cache_.find(key);
+    return &(it->second);
 }
 
-// storage: 存储管理器，train: 列车记录，start_date: 运行起始日期，from_idx: 起始站点索引，to_idx: 到达站点索引
-// 计算指定区间的可用座位数，返回可用座位数
-static int availableSeats(const StorageManager& storage, const TrainRecord& train, const Date& start_date, int from_idx, int to_idx) {
-    int occupancy[100] = {0};
-    computeSegmentOccupancy(storage, train, start_date, occupancy);
+// 增量更新区间占用缓存
+void TicketSystem::updateSegmentOccupancy(
+        const TrainRecord& train, const Date& start_date,
+        int from_idx, int to_idx, int delta) {
+    OccupancyKey key;
+    std::strcpy(key.train_id, train.train_id.c_str());
+    key.month = start_date.month;
+    key.day = start_date.day;
+
+    auto it = segment_cache_.find(key);
+    if (it != segment_cache_.end()) {
+        for (int s = from_idx; s < to_idx; ++s) {
+            it->second.occupancy[s] += delta;
+        }
+    }
+    // 如果缓存中没有，说明还没查询过该列车日期，不需要更新
+    // 下次查询时会从磁盘加载最新数据
+}
+
+// 清空缓存（clean 时调用）
+void TicketSystem::clearSegmentCache() {
+    segment_cache_.clear();
+}
+
+// 计算指定区间的可用座位数（从缓存读取）
+static int availableSeats(TicketSystem& sys, const StorageManager& storage,
+        const TrainRecord& train, const Date& start_date,
+        int from_idx, int to_idx) {
+    const OccupancyValue* cache = sys.getSegmentOccupancy(storage, train, start_date);
     int available = train.seat_num;
     for (int i = from_idx; i < to_idx; ++i) {
-        int remain = train.seat_num - occupancy[i];
+        int remain = train.seat_num - cache->occupancy[i];
         if (remain < available) available = remain;
     }
     return available;
@@ -443,7 +486,7 @@ std::string TicketSystem::handleQueryTrain(const Command& command) {
         } else {
             int seats = train.seat_num;
             if (train.released) {
-                seats = availableSeats(storage_, train, start_date, i, i + 1);
+                seats = availableSeats(*this, storage_, train, start_date, i, i + 1);
             }
             out += std::to_string(seats);
         }
@@ -494,7 +537,7 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
         DateTime depart = stationDeparture(train, from_idx, start_date);
         DateTime arrive = stationArrival(train, to_idx, start_date);
         int price = routePrice(train, from_idx, to_idx);
-        int seats = availableSeats(storage_, train, start_date, from_idx, to_idx);
+        int seats = availableSeats(*this, storage_, train, start_date, from_idx, to_idx);
         int duration = DateTimeUtils::dayOffset(depart.date, arrive.date) * 1440 + (arrive.time.hour * 60 + arrive.time.minute) - (depart.time.hour * 60 + depart.time.minute);
         std::string line = train.train_id + " " + from + " " + depart.toString() 
             + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) 
@@ -599,8 +642,8 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
 
                 int first_price = routePrice(first, start_idx, mid);
                 int second_price = routePrice(second, mid_idx, end_idx);
-                int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
-                int seats2 = availableSeats(storage_, second, second_start, mid_idx, end_idx);
+                int seats1 = availableSeats(*this, storage_, first, first_start, start_idx, mid);
+                int seats2 = availableSeats(*this, storage_, second, second_start, mid_idx, end_idx);
                 // 检查是否有座位可用
                 if (seats1 <= 0 || seats2 <= 0)
                     continue;
@@ -762,7 +805,7 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
     if (!canRunOnDate(train, from_idx, date)) 
         return "-1";
     Date start_date = getRunStartDate(train, from_idx, date);
-    int seats = availableSeats(storage_, train, start_date, from_idx, to_idx);
+    int seats = availableSeats(*this, storage_, train, start_date, from_idx, to_idx);
     int unit_price = routePrice(train, from_idx, to_idx);
     OrderRecord order;
     order.username = user;
@@ -780,6 +823,8 @@ std::string TicketSystem::handleBuyTicket(const Command& command) {
         order.is_waiting = false;
         if (!storage_.addOrder(order)) 
             return "-1";
+        // P0: 买票成功，更新缓存
+        updateSegmentOccupancy(train, start_date, from_idx, to_idx, +num);
         return std::to_string(static_cast<long long>(unit_price) * num);
     }
     if (q == "true") {
@@ -819,9 +864,9 @@ std::string TicketSystem::handleQueryOrder(const Command& command) {
     return out;
 }
 
-// storage: 存储管理器，train: 列车记录，start_date: 运行起始日期
+// sys: 票务系统引用，storage: 存储管理器，train: 列车记录，start_date: 运行起始日期
 // 处理候补订单队列，将有座位的候补订单转为成功状态
-static void processWaitlist(StorageManager& storage, const TrainRecord& train, const Date& start_date) {
+static void processWaitlist(TicketSystem& sys, StorageManager& storage, const TrainRecord& train, const Date& start_date) {
     std::vector<OrderRecord> orders;
     std::vector<int> ids;
     int count = 0;
@@ -829,11 +874,13 @@ static void processWaitlist(StorageManager& storage, const TrainRecord& train, c
         return;
     }
     for (int i = 0; i < count; ++i) {
-        int seats = availableSeats(storage, train, start_date, orders[i].from_idx, orders[i].to_idx);
+        int seats = availableSeats(sys, storage, train, start_date, orders[i].from_idx, orders[i].to_idx);
         if (seats >= orders[i].num) {
             orders[i].status = OrderStatus::Success;
             orders[i].is_waiting = false;
             storage.updateOrder(ids[i], orders[i]);
+            // P0: 候补转正，更新缓存
+            sys.updateSegmentOccupancy(train, start_date, orders[i].from_idx, orders[i].to_idx, +orders[i].num);
         }
     }
 }
@@ -869,7 +916,9 @@ std::string TicketSystem::handleRefundTicket(const Command& command) {
         TrainRecord train;
         if (storage_.loadTrain(order.train_id, train)) {
             Date run_start = getRunStartDate(train, order.from_idx, order.date);
-            processWaitlist(storage_, train, run_start);
+            // P0: 退票，释放座位
+            updateSegmentOccupancy(train, run_start, order.from_idx, order.to_idx, -order.num);
+            processWaitlist(*this, storage_, train, run_start);
         }
     }
     return "0";
@@ -881,6 +930,7 @@ std::string TicketSystem::handleClean(const Command& command) {
     std::filesystem::remove_all(storage_.basePath());
     storage_.initialize(storage_.basePath());
     logged_users.clear();
+    clearSegmentCache();
     return "0";
 }
 
