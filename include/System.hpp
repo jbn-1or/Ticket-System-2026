@@ -9,26 +9,6 @@
 
 namespace ticket {
 
-// P0: 区间占用缓存 key —— (train_id, date)
-struct OccupancyKey {
-    char train_id[24];
-    int month;
-    int day;
-
-    bool operator<(const OccupancyKey& other) const {
-        int cmp = std::strcmp(train_id, other.train_id);
-        if (cmp != 0) return cmp < 0;
-        if (month != other.month) return month < other.month;
-        return day < other.day;
-    }
-};
-
-// P0: 区间占用缓存 value —— 各段已售座位数
-struct OccupancyValue {
-    int station_num;
-    int occupancy[100];  // occupancy[i] = 第 i 段（station i → i+1）已售座位数
-};
-
 class TicketSystem {
 public:
     TicketSystem();
@@ -36,14 +16,6 @@ public:
 
     bool initialize(const std::string& dataPath);
     std::string execute(const Command& command);
-
-    // P0: 对外暴露缓存访问接口（供静态辅助函数使用）
-    const OccupancyValue* getSegmentOccupancy(
-        const StorageManager& storage, const TrainRecord& train, const Date& start_date);
-    void updateSegmentOccupancy(
-        const TrainRecord& train, const Date& start_date,
-        int from_idx, int to_idx, int delta);
-    void clearSegmentCache();
 
 private:
     bool checkLogin(const std::string& username) const;
@@ -71,9 +43,6 @@ private:
 
 private:
     StorageManager storage_;
-
-    // P0: 区间占用缓存
-    sjtu::map<OccupancyKey, OccupancyValue> segment_cache_;
 };
 
 } // namespace ticket
