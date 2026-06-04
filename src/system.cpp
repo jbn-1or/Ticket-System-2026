@@ -1,199 +1,22 @@
 #include "System.hpp"
+#include "TrainUtils.hpp"
+#include "OrderUtils.hpp"
+#include "Command.hpp"
 #include <cstring>
 #include <filesystem>
 
 namespace ticket {
 
-// text: 待分割的字符串，delim: 分隔符，parts: 输出向量，maxCount: 最大分割数
-// 按分隔符分割字符串，结果存入向量
-static void splitString(const std::string &text, char delim, sjtu::vector<std::string> &parts, int maxCount) {
-    parts.clear();
-    std::string current;
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == delim) {
-            if ((int)parts.size() < maxCount)
-                parts.push_back(current);
-            current.clear();
-        } else {
-            current.push_back(text[i]);
-        }
-    }
-    if ((int)parts.size() < maxCount)
-        parts.push_back(current);
-}
+// ==================== TicketSystem 基础方法 ====================
 
-// train: 列车记录，from: 出发站名, to: 到达站名, from_idx: 输出出发站索引, to_idx: 输出到达站索引
-// 一次扫描同时查找 from 和 to 的索引，减少字符串比较次数
-static bool findFromTo(const TrainRecord &train, const std::string &from, const std::string &to,
-                       int &from_idx, int &to_idx) {
-    from_idx = -1;
-    to_idx = -1;
-    for (int i = 0; i < train.station_num; ++i) {
-        if (train.stations[i] == from) {
-            from_idx = i;
-            if (to_idx >= 0)
-                break;
-        }
-        if (train.stations[i] == to) {
-            to_idx = i;
-            if (from_idx >= 0)
-                break;
-        }
-    }
-    if (from_idx < 0)
-        return false;
-    return to_idx > from_idx;
-}
-
-// train: 列车记录，station: 站点名称
-// 单站查找（query_transfer 使用）
-static int findStation(const TrainRecord &train, const std::string &station) {
-    for (int i = 0; i < train.station_num; ++i) {
-        if (train.stations[i] == station)
-            return i;
-    }
-    return -1;
-}
-
-// train: 列车记录，station_idx: 站点索引
-// 计算从始发站到指定站点的到达时间偏移（分钟）
-static int arrivalOffsetMinutes(const TrainRecord &train, int station_idx) {
-    if (station_idx == 0)
-        return 0;
-    int minutes = 0;
-    for (int i = 0; i < station_idx; ++i) {
-        minutes += train.travel_times[i];
-        if (i + 1 < station_idx) {
-            minutes += train.stopover_times[i];
-        }
-    }
-    return minutes;
-}
-
-// train: 列车记录，station_idx: 站点索引
-// 计算从始发站到指定站点的离开时间偏移（分钟）
-static int departureOffsetMinutes(const TrainRecord &train, int station_idx) {
-    int minutes = arrivalOffsetMinutes(train, station_idx);
-    if (station_idx > 0 && station_idx < train.station_num - 1) {
-        minutes += train.stopover_times[station_idx - 1];
-    }
-    return minutes;
-}
-
-// date: 原始日期，offset: 天数偏移（可正可负）
-// 计算日期加上指定天数后的新日期，返回新Date对象
-static Date addDays(const Date &date, int offset) {
-    int month = date.month;
-    int day = date.day;
-    if (offset >= 0) {
-        while (offset > 0) {
-            int month_len = 31;
-            if (month == 2)
-                month_len = 28;
-            else if (month == 4 || month == 6 || month == 9 || month == 11)
-                month_len = 30;
-            int remain = month_len - day;
-            if (offset <= remain) {
-                day += offset;
-                offset = 0;
-            } else {
-                offset -= (remain + 1);
-                day = 1;
-                month += 1;
-                if (month > 12)
-                    month = 1;
-            }
-        }
-    } else {
-        offset = -offset;
-        while (offset > 0) {
-            if (offset < day) {
-                day -= offset;
-                offset = 0;
-            } else {
-                offset -= day;
-                month -= 1;
-                if (month < 1)
-                    month = 12;
-                if (month == 2)
-                    day = 28;
-                else if (month == 4 || month == 6 || month == 9 || month == 11)
-                    day = 30;
-                else
-                    day = 31;
-            }
-        }
-    }
-    return Date(month, day);
-}
-
-// train: 列车记录，station_idx: 站点索引
-// 计算列车在指定站点的出发时间，返回Time对象
-static Time departureTimeAtStation(const TrainRecord &train, int station_idx) {
-    int total = train.start_time.hour * 60 + train.start_time.minute + departureOffsetMinutes(train, station_idx);
-    total %= 1440;
-    if (total < 0)
-        total += 1440;
-    return Time(total / 60, total % 60);
-}
-
-// train: 列车记录，station_idx: 站点索引，depart_date: 该站点的出发日期
-// 根据到达中途某站的时间，反推列车的起点日期，返回Date对象
-static Date getRunStartDate(const TrainRecord &train, int station_idx, const Date &depart_date) {
-    int offset = departureOffsetMinutes(train, station_idx);
-    DateTime current(Date(depart_date.month, depart_date.day), departureTimeAtStation(train, station_idx));
-    DateTime start = addMinutes(current, -offset);
-    return start.date;
-}
-
-// train: 列车记录，station_idx: 站点索引，start_date: 运行起始日期
-// 计算列车到达指定站点的时间，返回DateTime对象
-static DateTime stationArrival(const TrainRecord &train, int station_idx, const Date &start_date) {
-    DateTime base(start_date, train.start_time);
-    return addMinutes(base, arrivalOffsetMinutes(train, station_idx));
-}
-
-// train: 列车记录，station_idx: 站点索引，start_date: 运行起始日期
-// 计算列车从指定站点出发的日期时间，返回DateTime对象
-static DateTime stationDeparture(const TrainRecord &train, int station_idx, const Date &start_date) {
-    DateTime base(start_date, train.start_time);
-    return addMinutes(base, departureOffsetMinutes(train, station_idx));
-}
-
-// train: 列车记录，from_idx: 起始站点索引，to_idx: 到达站点索引
-// 计算指定区间的票价，返回总票价
-static int routePrice(const TrainRecord &train, int from_idx, int to_idx) {
-    int price = 0;
-    for (int i = from_idx; i < to_idx; ++i)
-        price += train.prices[i];
-    return price;
-}
-
-// begin: 范围开始日期，end: 范围结束日期，target: 目标日期
-// 判断目标日期是否在[begin, end]范围内，在范围内返回true
-static bool dateInRange(const Date &begin, const Date &end, const Date &target) {
-    if (target < begin)
-        return false;
-    if (end < target)
-        return false;
-    return true;
-}
-
-// 默认构造函数：创建空的TicketSystem对象
-// 初始化票务系统
 TicketSystem::TicketSystem() {}
 
-// 析构函数：清理TicketSystem资源
 TicketSystem::~TicketSystem() {}
 
-// dataPath: 数据存储目录路径
-// 初始化票务系统，设置数据存储路径，返回是否成功
 bool TicketSystem::initialize(const std::string &dataPath) {
     return storage_.initialize(dataPath);
 }
 
-// command: 要执行的命令对象
-// 根据命令类型分发到对应的处理函数，返回执行结果字符串
 std::string TicketSystem::execute(const Command &command) {
     switch (command.type) {
     case CommandType::AddUser:
@@ -233,14 +56,10 @@ std::string TicketSystem::execute(const Command &command) {
     }
 }
 
-// username: 用户名
-// 检查用户是否已登录，已登录返回true
 bool TicketSystem::checkLogin(const std::string &username) const {
     return logged_users.find(username) != logged_users.cend();
 }
 
-// username: 用户名
-// 获取用户权限等级，用户不存在返回-1
 int TicketSystem::privilegeOf(const std::string &username) const {
     UserRecord u;
     if (!storage_.loadUser(username, u))
@@ -248,8 +67,8 @@ int TicketSystem::privilegeOf(const std::string &username) const {
     return u.privilege;
 }
 
-// command: 包含用户信息的命令对象
-// 处理添加用户请求，成功返回"0"，失败返回"-1"
+// ==================== handle 函数 ====================
+
 std::string TicketSystem::handleAddUser(const Command &command) {
     std::string newu = command.getParam('u');
     std::string pwd = command.getParam('p');
@@ -282,8 +101,6 @@ std::string TicketSystem::handleAddUser(const Command &command) {
     return "0";
 }
 
-// command: 包含登录信息的命令对象
-// 处理用户登录请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleLogin(const Command &command) {
     std::string u = command.getParam('u');
     std::string p = command.getParam('p');
@@ -298,8 +115,6 @@ std::string TicketSystem::handleLogin(const Command &command) {
     return "0";
 }
 
-// command: 包含用户名的命令对象
-// 处理用户登出请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleLogout(const Command &command) {
     std::string u = command.getParam('u');
     auto it = logged_users.find(u);
@@ -311,8 +126,6 @@ std::string TicketSystem::handleLogout(const Command &command) {
     }
 }
 
-// command: 包含查询信息的命令对象
-// 处理查询用户信息请求，成功返回用户信息，失败返回"-1"
 std::string TicketSystem::handleQueryProfile(const Command &command) {
     std::string cur = command.getParam('c');
     std::string target = command.getParam('u');
@@ -321,10 +134,9 @@ std::string TicketSystem::handleQueryProfile(const Command &command) {
     UserRecord tr;
     if (!storage_.loadUser(target, tr))
         return "-1";
-    // 用已加载的 tr 判断权限，避免重复 B+ tree 查找
     int curp;
     if (cur == target) {
-        curp = tr.privilege; // 同一个人，无需再查
+        curp = tr.privilege;
     } else {
         curp = privilegeOf(cur);
     }
@@ -333,8 +145,6 @@ std::string TicketSystem::handleQueryProfile(const Command &command) {
     return tr.username + " " + tr.name + " " + tr.mail + " " + std::to_string(tr.privilege);
 }
 
-// command: 包含修改信息的命令对象
-// 处理修改用户信息请求，成功返回修改后的用户信息，失败返回"-1"
 std::string TicketSystem::handleModifyProfile(const Command &command) {
     std::string cur = command.getParam('c');
     std::string target = command.getParam('u');
@@ -363,47 +173,6 @@ std::string TicketSystem::handleModifyProfile(const Command &command) {
     return tr.username + " " + tr.name + " " + tr.mail + " " + std::to_string(tr.privilege);
 }
 
-// ====== 可用座位查询 ======
-
-// 计算指定区间的可用座位数（从磁盘加载订单并计算）
-static int availableSeats(const StorageManager &storage,
-                          const TrainRecord &train, const Date &start_date,
-                          int from_idx, int to_idx) {
-    int occupancy[100] = {0};
-    sjtu::vector<OrderRecord> orders;
-    sjtu::vector<int> ids;
-    if (storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids)) {
-        for (size_t i = 0; i < orders.size(); ++i) {
-            OrderRecord &order = orders[i];
-            if (order.status != OrderStatus::Success)
-                continue;
-            Date orderStart = getRunStartDate(train, order.from_idx, order.date);
-            if (!(orderStart == start_date))
-                continue;
-            for (int s = order.from_idx; s < order.to_idx; ++s) {
-                if (s >= 0 && s < train.station_num - 1)
-                    occupancy[s] += order.num;
-            }
-        }
-    }
-    int available = train.seat_num;
-    for (int i = from_idx; i < to_idx; ++i) {
-        int remain = train.seat_num - occupancy[i];
-        if (remain < available)
-            available = remain;
-    }
-    return available;
-}
-
-// train: 列车记录，station_idx: 站点索引，depart_date: 出发日期
-// 判断列车在指定日期是否可运行，可运行返回true
-static bool canRunOnDate(const TrainRecord &train, int station_idx, const Date &depart_date) {
-    Date start_date = getRunStartDate(train, station_idx, depart_date);
-    return dateInRange(train.sale_begin, train.sale_end, start_date);
-}
-
-// command: 包含列车信息的命令对象
-// 处理添加列车请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleAddTrain(const Command &command) {
     TrainRecord train;
     train.train_id = command.getParam('i');
@@ -451,8 +220,6 @@ std::string TicketSystem::handleAddTrain(const Command &command) {
     return "0";
 }
 
-// command: 包含列车ID的命令对象
-// 处理删除列车请求（仅未发布的列车可删除），成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleDeleteTrain(const Command &command) {
     std::string id = command.getParam('i');
     TrainRecord train;
@@ -465,8 +232,6 @@ std::string TicketSystem::handleDeleteTrain(const Command &command) {
     return "0";
 }
 
-// command: 包含列车ID的命令对象
-// 处理发布列车请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleReleaseTrain(const Command &command) {
     std::string id = command.getParam('i');
     TrainRecord train;
@@ -480,15 +245,15 @@ std::string TicketSystem::handleReleaseTrain(const Command &command) {
     return "0";
 }
 
-// command: 包含列车ID和日期的命令对象
-// 处理查询列车信息请求，成功返回列车详情，失败返回"-1"
 std::string TicketSystem::handleQueryTrain(const Command &command) {
     std::string id = command.getParam('i');
     Date date = Date::parse(command.getParam('d'));
     TrainRecord train;
     if (!storage_.loadTrain(id, train))
         return "-1";
-    if (!dateInRange(train.sale_begin, train.sale_end, date))
+    if (date < train.sale_begin)
+        return "-1";
+    if (train.sale_end < date)
         return "-1";
     Date start_date = date;
     std::string out = train.train_id + " ";
@@ -518,33 +283,11 @@ std::string TicketSystem::handleQueryTrain(const Command &command) {
     return out;
 }
 
-struct Item {
-    std::string line;
-    int key1;
-    std::string key2;
-};
-
-static void sortItem(sjtu::vector<Item> &items) {
-    for (size_t i = 1; i < items.size(); ++i) {
-        Item tmp = std::move(items[i]);
-        size_t j = i;
-        while (j > 0 && (items[j - 1].key1 > tmp.key1 ||
-                         (items[j - 1].key1 == tmp.key1 && items[j - 1].key2 > tmp.key2))) {
-            items[j] = std::move(items[j - 1]);
-            --j;
-        }
-        items[j] = std::move(tmp);
-    }
-}
-
-// command: 包含出发站、到达站、日期的命令对象
-// 处理查询车票请求，成功返回符合条件的列车列表，无结果返回"0"
 std::string TicketSystem::handleQueryTicket(const Command &command) {
     std::string from = command.getParam('s');
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    // 使用站对索引：直接获取同时经过from和to且顺序正确的列车
     sjtu::vector<TrainRecord> trains;
     if (!storage_.loadTrainsByStationPair(from, to, trains))
         return "0";
@@ -567,57 +310,30 @@ std::string TicketSystem::handleQueryTicket(const Command &command) {
         int duration = DateTimeUtils::dayOffset(depart.date, arrive.date) * 1440 + (arrive.time.hour * 60 + arrive.time.minute) - (depart.time.hour * 60 + depart.time.minute);
         std::string line = train.train_id + " " + from + " " + depart.toString() + " -> " + to + " " + arrive.toString() + " " + std::to_string(price) + " " + std::to_string(seats);
         if (order == "time") {
-            // 按时间排序：主要按耗时，其次按 Train ID
             items.push_back({line, duration, train.train_id});
         } else {
-            // 按价格排序：主要按票价，其次按 Train ID
             items.push_back({line, price, train.train_id});
         }
     }
     if (items.empty()) {
         return "0";
     }
-
     sortItem(items);
-
     std::string out = std::to_string(static_cast<int>(items.size()));
-
     for (size_t i = 0; i < items.size(); ++i) {
         out += "\n" + items[i].line;
     }
     return out;
 }
 
-// train: 列车记录，station_idx: 站点索引，earliest: 最早允许的出发时间
-// 查找列车在指定站点最早可行的出发时间，返回DateTime对象，无可用时间返回无效日期
-static DateTime bestSecondDeparture(const TrainRecord &train, int station_idx, const DateTime &earliest) {
-    // 最早可行出发时间
-    Date candidate = getRunStartDate(train, station_idx, earliest.date);
-    if (candidate < train.sale_begin)
-        candidate = train.sale_begin;
-    while (dateInRange(train.sale_begin, train.sale_end, candidate)) {
-        DateTime depart = stationDeparture(train, station_idx, candidate);
-        if (!(depart < earliest))
-            return depart;
-        candidate = addDays(candidate, 1);
-    }
-    return DateTime(Date(0, 0), Time(0, 0));
-}
-
-// command: 包含出发站、到达站、日期的命令对象
-// 处理查询中转车票请求，成功返回最优中转方案，无结果返回"0"
-// 优化：使用站对索引 loadTrainsByStationPair(mid, to) 替代对全部 second 列车的 findStation 扫描
 std::string TicketSystem::handleQueryTransfer(const Command &command) {
-    // 读取命令参数：出发站、到达站、日期、排序方式
     std::string from = command.getParam('s');
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    // 加载出发站的列车记录
     sjtu::vector<TrainRecord> firstTrains;
     if (!storage_.loadTrainsByStation(from, firstTrains))
         return "0";
-    // 初始化最优中转方案的变量
     bool found = false;
     int best_main = 0;
     int best_secondary = 0;
@@ -626,7 +342,6 @@ std::string TicketSystem::handleQueryTransfer(const Command &command) {
     std::string best_first_id;
     std::string best_second_id;
 
-    // 遍历出发站的列车，查找符合要求的中转方案
     for (size_t i = 0; i < firstTrains.size(); ++i) {
         TrainRecord &first = firstTrains[i];
         if (!first.released)
@@ -634,25 +349,20 @@ std::string TicketSystem::handleQueryTransfer(const Command &command) {
         int start_idx = findStation(first, from);
         if (start_idx < 0)
             continue;
-        // 得到列车的起点站出发时间
         Date first_start = getRunStartDate(first, start_idx, date);
-        // 计算列车到达from站的时间
         DateTime first_depart = stationDeparture(first, start_idx, first_start);
-        // 判断列车是否在指定日期运行，并且到达时间不晚于查询日期
-        if (!(first_depart.date == date) || !dateInRange(first.sale_begin, first.sale_end, first_start))
+        if (!(first_depart.date == date))
             continue;
-        // 遍历first列车的中间站,查找符合要求的中转方案
+        if (first_start < first.sale_begin || first.sale_end < first_start)
+            continue;
         for (int mid = start_idx + 1; mid < first.station_num; ++mid) {
             const std::string &mid_station = first.stations[mid];
-            // 计算第一辆列车到达中转站的时间
             DateTime first_arrive = stationArrival(first, mid, first_start);
             int first_price = routePrice(first, start_idx, mid);
-            // 预计算 first 段的座位
             int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
             if (seats1 <= 0)
-                continue; // 第一段就没座，跳过
+                continue;
 
-            // 使用站对索引：直接获取同时经过 mid_station 和 to 且顺序正确的列车
             sjtu::vector<TrainRecord> midSecondTrains;
             if (!storage_.loadTrainsByStationPair(mid_station, to, midSecondTrains))
                 continue;
@@ -663,12 +373,10 @@ std::string TicketSystem::handleQueryTransfer(const Command &command) {
                     continue;
                 if (first.train_id == second.train_id)
                     continue;
-                // 站对索引已保证 mid_station 在 to 之前，获取具体索引
                 int mid_idx = findStation(second, mid_station);
                 int end_idx = findStation(second, to);
                 if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx)
                     continue;
-                // 查找第二辆列车在中转站最早可行的出发时间
                 DateTime second_depart = bestSecondDeparture(second, mid_idx, first_arrive);
                 if (second_depart.date.month == 0)
                     continue;
@@ -720,114 +428,6 @@ std::string TicketSystem::handleQueryTransfer(const Command &command) {
     return result;
 }
 
-static void sortIdx(sjtu::vector<int> &idx, const OrderRecord orders[], const int ids[], bool descending) {
-    for (size_t i = 1; i < idx.size(); ++i) {
-        int tmp = idx[i];
-        size_t j = i;
-        while (j > 0) {
-            bool needSwap;
-            if (orders[idx[j - 1]].timestamp != orders[tmp].timestamp) {
-                needSwap = descending ? orders[idx[j - 1]].timestamp < orders[tmp].timestamp
-                                      : orders[idx[j - 1]].timestamp > orders[tmp].timestamp;
-            } else {
-                needSwap = ids[idx[j - 1]] > ids[tmp];
-            }
-            if (!needSwap)
-                break;
-            idx[j] = idx[j - 1];
-            --j;
-        }
-        idx[j] = tmp;
-    }
-}
-
-// orders: 订单数组引用，ids: 订单ID数组引用，descending: 是否降序
-// 按时间戳对订单数组进行原地排序（避免临时拷贝）
-static void sortOrdersByTimestamp(sjtu::vector<OrderRecord> &orders, sjtu::vector<int> &ids, bool descending) {
-    int count = static_cast<int>(orders.size());
-    if (count <= 1)
-        return;
-    // 构建索引数组
-    sjtu::vector<int> idx;
-    for (int i = 0; i < count; ++i)
-        idx.push_back(i);
-    // 排序索引
-    sortIdx(idx, &orders[0], &ids[0], descending);
-    // 原地重排：使用 tag 标记已处理的元素
-    sjtu::vector<char> done;
-    for (int i = 0; i < count; ++i)
-        done.push_back(0);
-    for (int i = 0; i < count; ++i) {
-        if (done[i] || idx[i] == i)
-            continue;
-        // 循环移位
-        int j = i;
-        OrderRecord tmpOrder = std::move(orders[j]);
-        int tmpId = ids[j];
-        while (!done[j]) {
-            done[j] = true;
-            int next = idx[j];
-            if (done[next])
-                break;
-            orders[j] = std::move(orders[next]);
-            ids[j] = ids[next];
-            j = next;
-        }
-        orders[j] = std::move(tmpOrder);
-        ids[j] = tmpId;
-        done[j] = true;
-    }
-}
-
-// storage: 存储管理器, username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量，descending: 是否降序
-// 加载用户的所有订单并按时间戳排序，成功返回true
-static bool loadUserOrders(const StorageManager &storage, const std::string &username,
-                           sjtu::vector<OrderRecord> &orders, sjtu::vector<int> &ids, bool descending = true) {
-    if (!storage.loadOrdersByUser(username, orders, ids))
-        return false;
-    sortOrdersByTimestamp(orders, ids, descending);
-    return true;
-}
-
-// status: 订单状态枚举值
-// 将订单状态转换为对应的字符串，返回"success"、"pending"或"refunded"
-static std::string orderStatusString(OrderStatus status) {
-    if (status == OrderStatus::Success)
-        return "success";
-    if (status == OrderStatus::Pending)
-        return "pending";
-    return "refunded";
-}
-
-// storage: 存储管理器，train: 列车记录，start_date: 运行起始日期，orders: 输出订单向量，ids: 输出订单ID向量，count: 输出订单数量
-// 加载指定列车指定日期的所有待处理订单，成功返回true
-static bool loadPendingOrders(const StorageManager &storage,
-                              const TrainRecord &train, const Date &start_date,
-                              sjtu::vector<OrderRecord> &orders, sjtu::vector<int> &ids, int &count) {
-    if (!storage.loadOrdersByTrainDate(train.train_id, start_date, orders, ids))
-        return false;
-    sjtu::vector<OrderRecord> filteredOrders;
-    sjtu::vector<int> filteredIds;
-    for (size_t i = 0; i < orders.size(); ++i) {
-        if (orders[i].train_id != train.train_id)
-            continue;
-        if (orders[i].status != OrderStatus::Pending)
-            continue;
-        Date orderStart = getRunStartDate(train, orders[i].from_idx, orders[i].date);
-        if (!(orderStart == start_date))
-            continue;
-        filteredOrders.push_back(orders[i]);
-        filteredIds.push_back(ids[i]);
-    }
-    orders = std::move(filteredOrders);
-    ids = std::move(filteredIds);
-    count = static_cast<int>(orders.size());
-    sortOrdersByTimestamp(orders, ids, false);
-    return true;
-}
-
-// command: 包含购票信息的命令对象
-// 处理购票请求，成功返回票价或"queue"，失败返回"-1"
 std::string TicketSystem::handleBuyTicket(const Command &command) {
     std::string user = command.getParam('u');
     std::string train_id = command.getParam('i');
@@ -839,7 +439,6 @@ std::string TicketSystem::handleBuyTicket(const Command &command) {
     if (!checkLogin(user))
         return "-1";
     TrainRecord train;
-
     if (!storage_.loadTrain(train_id, train))
         return "-1";
     if (!train.released)
@@ -880,8 +479,6 @@ std::string TicketSystem::handleBuyTicket(const Command &command) {
     return "-1";
 }
 
-// command: 包含用户名的命令对象
-// 处理查询用户订单请求，成功返回订单列表，失败返回"-1"
 std::string TicketSystem::handleQueryOrder(const Command &command) {
     std::string user = command.getParam('u');
     if (!checkLogin(user))
@@ -908,27 +505,6 @@ std::string TicketSystem::handleQueryOrder(const Command &command) {
     return out;
 }
 
-// sys: 票务系统引用，storage: 存储管理器，train: 列车记录，start_date: 运行起始日期
-// 处理候补订单队列，将有座位的候补订单转为成功状态
-static void processWaitlist(TicketSystem &sys, StorageManager &storage, const TrainRecord &train, const Date &start_date) {
-    sjtu::vector<OrderRecord> orders;
-    sjtu::vector<int> ids;
-    int count = 0;
-    if (!loadPendingOrders(storage, train, start_date, orders, ids, count)) {
-        return;
-    }
-    for (int i = 0; i < count; ++i) {
-        int seats = availableSeats(storage, train, start_date, orders[i].from_idx, orders[i].to_idx);
-        if (seats >= orders[i].num) {
-            orders[i].status = OrderStatus::Success;
-            orders[i].is_waiting = false;
-            storage.updateOrder(ids[i], orders[i]);
-        }
-    }
-}
-
-// command: 包含用户名和订单序号的命令对象
-// 处理退票请求，成功返回"0"，失败返回"-1"
 std::string TicketSystem::handleRefundTicket(const Command &command) {
     std::string user = command.getParam('u');
     if (!checkLogin(user))
@@ -966,8 +542,6 @@ std::string TicketSystem::handleRefundTicket(const Command &command) {
     return "0";
 }
 
-// command: 清理命令对象
-// 清理所有数据（删除存储目录），重新初始化系统，返回"0"
 std::string TicketSystem::handleClean(const Command &command) {
     std::filesystem::remove_all(storage_.basePath());
     storage_.initialize(storage_.basePath());
@@ -975,8 +549,6 @@ std::string TicketSystem::handleClean(const Command &command) {
     return "0";
 }
 
-// command: 退出命令对象
-// 处理退出请求，清空登录用户列表，返回"bye"
 std::string TicketSystem::handleExit(const Command &command) {
     logged_users.clear();
     return "bye";

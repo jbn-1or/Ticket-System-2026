@@ -1,9 +1,27 @@
 #include "Storage.hpp"
+#include "TrainUtils.hpp"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 
 namespace ticket {
+
+// ==================== Entity 构造函数 ====================
+
+UserRecord::UserRecord() : username(), password(), name(), mail(), privilege(0) {}
+
+TrainRecord::TrainRecord()
+    : train_id(), station_num(0), seat_num(0), max_seat_num(0), start_time(), sale_begin(), sale_end(), type(' '), released(false) {
+}
+
+OrderRecord::OrderRecord()
+    : order_id(0), username(), train_id(), date(), from_idx(0), to_idx(0), num(0),
+      price(0), status(OrderStatus::Success), is_waiting(false), timestamp(0) {}
+
+WaitlistRecord::WaitlistRecord()
+    : username(), train_id(), date(), from_idx(0), to_idx(0), num(0), timestamp(0) {}
+
+// ==================== 路径常量 ====================
 
 const char *StoragePaths::USERS = "users.db";
 const char *StoragePaths::TRAINS = "trains.db";
@@ -82,71 +100,6 @@ static std::string formatTrainDateKey(const std::string &train_id, const Date &d
         result += '0';
     result += std::to_string(date.day);
     return result;
-}
-
-// train: 列车记录，station_idx: 站点索引
-// 计算从始发站到指定站点的出发时间偏移（分钟），返回偏移量
-static int departureOffsetMinutes(const TrainRecord &train, int station_idx) {
-    if (station_idx == 0)
-        return 0;
-    int minutes = 0;
-    for (int i = 0; i < station_idx; ++i) {
-        minutes += train.travel_times[i];
-        if (i + 1 < station_idx)
-            minutes += train.stopover_times[i];
-    }
-    if (station_idx > 0 && station_idx < train.station_num - 1) {
-        minutes += train.stopover_times[station_idx - 1];
-    }
-    return minutes;
-}
-
-// date: 原始日期，offset: 天数偏移（可正可负）
-// 计算日期加上指定天数后的新日期，返回新Date对象
-static Date addDays(const Date &date, int offset) {
-    int month = date.month;
-    int day = date.day;
-    if (offset >= 0) {
-        while (offset > 0) {
-            int month_len = 31;
-            if (month == 2) {
-                month_len = 28;
-            } else if (month == 4 || month == 6 || month == 9 || month == 11) {
-                month_len = 30;
-            }
-            int remain = month_len - day;
-            if (offset <= remain) {
-                day += offset;
-                offset = 0;
-            } else {
-                offset -= (remain + 1);
-                day = 1;
-                month += 1;
-                if (month > 12)
-                    month = 1;
-            }
-        }
-    } else {
-        offset = -offset;
-        while (offset > 0) {
-            if (offset < day) {
-                day -= offset;
-                offset = 0;
-            } else {
-                offset -= day;
-                month -= 1;
-                if (month < 1)
-                    month = 12;
-                if (month == 2)
-                    day = 28;
-                else if (month == 4 || month == 6 || month == 9 || month == 11)
-                    day = 30;
-                else
-                    day = 31;
-            }
-        }
-    }
-    return Date(month, day);
 }
 
 // user: 用户记录，bin: 输出的二进制用户记录

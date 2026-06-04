@@ -1,6 +1,7 @@
 #ifndef TICKET_SYSTEM_COMMAND_HPP
 #define TICKET_SYSTEM_COMMAND_HPP
 
+#include "vector.hpp"
 #include <string>
 
 namespace ticket {
@@ -50,6 +51,9 @@ public:
     Command parse(const std::string &line) const;
     static CommandType toType(const std::string &name);
 };
+
+// 按分隔符分割字符串
+void splitString(const std::string &text, char delim, sjtu::vector<std::string> &parts, int maxCount);
 
 } // namespace ticket
 

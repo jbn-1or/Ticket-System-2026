@@ -137,4 +137,22 @@ Command CommandParser::parse(const std::string &line) const {
     return cmd;
 }
 
+// text: 待分割的字符串，delim: 分隔符，parts: 输出向量，maxCount: 最大分割数
+// 按分隔符分割字符串，结果存入向量
+void splitString(const std::string &text, char delim, sjtu::vector<std::string> &parts, int maxCount) {
+    parts.clear();
+    std::string current;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == delim) {
+            if ((int)parts.size() < maxCount)
+                parts.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(text[i]);
+        }
+    }
+    if ((int)parts.size() < maxCount)
+        parts.push_back(current);
+}
+
 } // namespace ticket

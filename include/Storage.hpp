@@ -1,7 +1,7 @@
 #ifndef TICKET_SYSTEM_STORAGE_HPP
 #define TICKET_SYSTEM_STORAGE_HPP
 
-#include "Entities.hpp"
+#include "DateTime.hpp"
 #include "MemoryRiver.hpp"
 #include "bpt.hpp"
 #include "vector.hpp"
@@ -9,70 +9,138 @@
 
 namespace ticket {
 
-// 二进制用户记录结构体
+static const int MAX_STATIONS = 100;
+static const int MAX_PRICE_SEGMENTS = 100;
+static const int MAX_TRAVEL_SEGMENTS = 100;
+
+enum class OrderStatus {
+    Success,
+    Pending,
+    Refunded
+};
+
+// 用户记录
+struct UserRecord {
+    std::string username;
+    std::string password;
+    std::string name;
+    std::string mail;
+    int privilege;
+
+    UserRecord();
+};
+
+// 列车记录
+struct TrainRecord {
+    std::string train_id;
+    int station_num;
+    int seat_num;
+    int max_seat_num;
+    sjtu::vector<std::string> stations;
+    sjtu::vector<int> prices;
+    Time start_time;
+    sjtu::vector<int> travel_times;
+    sjtu::vector<int> stopover_times;
+    Date sale_begin;
+    Date sale_end;
+    char type;
+    bool released;
+
+    TrainRecord();
+};
+
+// 订单记录
+struct OrderRecord {
+    int order_id;
+    std::string username;
+    std::string train_id;
+    Date date;
+    int from_idx;
+    int to_idx;
+    int num;
+    int price;
+    OrderStatus status;
+    bool is_waiting;
+    int timestamp;
+
+    OrderRecord();
+};
+
+// 候补记录
+struct WaitlistRecord {
+    std::string username;
+    std::string train_id;
+    Date date;
+    int from_idx;
+    int to_idx;
+    int num;
+    int timestamp;
+
+    WaitlistRecord();
+};
+
+// ==================== 二进制存储结构 ====================
+
 struct BinaryUserRecord {
-    char username[21]; // 用户名（最大20字符）
-    char password[31]; // 密码（最大30字符）
-    char name[32];     // 姓名（最大31字符）
-    char mail[31];     // 邮箱（最大30字符）
-    int privilege;     // 权限等级
-    bool deleted;      // 是否已删除
-    char padding[3];   // 对齐填充
+    char username[21];
+    char password[31];
+    char name[32];
+    char mail[31];
+    int privilege;
+    bool deleted;
+    char padding[3];
 };
 
-// 二进制列车记录结构体
 struct BinaryTrainRecord {
-    char train_id[21];                       // 列车编号（最大20字符）
-    int station_num;                         // 途经站数
-    int seat_num;                            // 座位数
-    int max_seat_num;                        // 最大座位数
-    char stations[MAX_STATIONS][32];         // 途经站名称数组
-    int prices[MAX_PRICE_SEGMENTS];          // 各段票价数组
-    int travel_times[MAX_TRAVEL_SEGMENTS];   // 各段行驶时间数组（分钟）
-    int stopover_times[MAX_TRAVEL_SEGMENTS]; // 各站停留时间数组（分钟）
-    int start_hour;                          // 发车小时
-    int start_minute;                        // 发车分钟
-    int sale_begin_month;                    // 售票开始月份
-    int sale_begin_day;                      // 售票开始日期
-    int sale_end_month;                      // 售票结束月份
-    int sale_end_day;                        // 售票结束日期
-    char type;                               // 列车类型
-    bool released;                           // 是否已发布
-    bool deleted;                            // 是否已删除
-    char padding[2];                         // 对齐填充
+    char train_id[21];
+    int station_num;
+    int seat_num;
+    int max_seat_num;
+    char stations[MAX_STATIONS][32];
+    int prices[MAX_PRICE_SEGMENTS];
+    int travel_times[MAX_TRAVEL_SEGMENTS];
+    int stopover_times[MAX_TRAVEL_SEGMENTS];
+    int start_hour;
+    int start_minute;
+    int sale_begin_month;
+    int sale_begin_day;
+    int sale_end_month;
+    int sale_end_day;
+    char type;
+    bool released;
+    bool deleted;
+    char padding[2];
 };
 
-// 二进制订单记录结构体
 struct BinaryOrderRecord {
-    int order_id;      // 订单编号
-    char username[21]; // 用户名（最大20字符）
-    char train_id[21]; // 列车编号（最大20字符）
-    int date_month;    // 乘车月份
-    int date_day;      // 乘车日期
-    int from_idx;      // 出发站索引
-    int to_idx;        // 到达站索引
-    int num;           // 购票数量
-    int price;         // 总票价
-    int status;        // 订单状态（0-Success, 1-Pending, 2-Refunded）
-    bool is_waiting;   // 是否为候补订单
-    bool deleted;      // 是否已删除
-    char padding[2];   // 对齐填充
-    int timestamp;     // 创建时间戳
+    int order_id;
+    char username[21];
+    char train_id[21];
+    int date_month;
+    int date_day;
+    int from_idx;
+    int to_idx;
+    int num;
+    int price;
+    int status;
+    bool is_waiting;
+    bool deleted;
+    char padding[2];
+    int timestamp;
 };
 
-// 存储路径结构体
 struct StoragePaths {
-    static const char *USERS;                    // 用户数据文件路径
-    static const char *TRAINS;                   // 列车数据文件路径
-    static const char *ORDERS;                   // 订单数据文件路径
-    static const char *WAITLIST;                 // 候补队列文件路径
-    static const char *USER_INDEX;               // 用户索引文件路径
-    static const char *TRAIN_INDEX;              // 列车索引文件路径
-    static const char *ORDER_INDEX;              // 订单索引文件路径
-    static const char *ORDER_USER_INDEX;         // 订单-用户索引文件路径
-    static const char *TRAIN_STATION_INDEX;      // 列车-站点索引文件路径
-    static const char *TRAIN_STATION_PAIR_INDEX; // 列车-站对索引文件路径
-    static const char *ORDER_TRAIN_DATE_INDEX;   // 订单-列车-日期索引文件路径
+    static const char *USERS;
+    static const char *TRAINS;
+    static const char *ORDERS;
+    static const char *WAITLIST;
+    static const char *USER_INDEX;
+    static const char *TRAIN_INDEX;
+    static const char *ORDER_INDEX;
+    static const char *ORDER_USER_INDEX;
+    static const char *TRAIN_STATION_INDEX;
+    static const char *TRAIN_STATION_PAIR_INDEX;
+    static const char *ORDER_TRAIN_DATE_INDEX;
 };
 
 class StorageManager {
@@ -99,7 +167,6 @@ public:
     bool loadTrainsByStation(const std::string &station, sjtu::vector<TrainRecord> &trains) const;
     bool loadTrainsByStationPair(const std::string &from, const std::string &to, sjtu::vector<TrainRecord> &trains) const;
 
-    // helper
     bool hasAnyUser() const;
     std::string basePath() const;
 
@@ -112,8 +179,8 @@ private:
     BPlusTree<int> *trainIndex_;
     BPlusTree<int> *orderIndex_;
     BPlusTree<int> *orderUserIndex_;
-    BPlusTree<int> *trainStationIndex_;     // key=站名, value=train offset
-    BPlusTree<int> *trainStationPairIndex_; // key="from|to", value=train offset
+    BPlusTree<int> *trainStationIndex_;
+    BPlusTree<int> *trainStationPairIndex_;
     BPlusTree<int> *orderTrainDateIndex_;
     int next_order_id_;
 };

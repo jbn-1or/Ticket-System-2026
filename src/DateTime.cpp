@@ -132,7 +132,7 @@ int DateTimeUtils::dayOffset(const Date &from, const Date &to) {
 
 // d: 原始日期，offset: 天数偏移
 // 计算日期加上指定天数后的新日期，返回新Date对象
-static Date addDays(const Date &d, int offset) {
+Date addDays(const Date &d, int offset) {
     int month = d.month;
     int day = d.day;
     if (offset >= 0) {

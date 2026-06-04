@@ -50,6 +50,7 @@ public:
 };
 
 DateTime addMinutes(const DateTime &dt, int minutes);
+Date addDays(const Date &d, int offset);
 
 } // namespace ticket
 
