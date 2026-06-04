@@ -1,32 +1,31 @@
 #include "Storage.hpp"
-#include <fstream>
-#include <filesystem>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
 
 namespace ticket {
 
-const char* StoragePaths::USERS = "users.db";
-const char* StoragePaths::TRAINS = "trains.db";
-const char* StoragePaths::ORDERS = "orders.db";
-const char* StoragePaths::WAITLIST = "waitlist.db";
-const char* StoragePaths::USER_INDEX = "user_index.idx";
-const char* StoragePaths::TRAIN_INDEX = "train_index.idx";
-const char* StoragePaths::ORDER_INDEX = "order_index.idx";
-const char* StoragePaths::ORDER_USER_INDEX = "order_user_index.idx";
-const char* StoragePaths::TRAIN_STATION_INDEX = "train_station_index.idx";
-const char* StoragePaths::TRAIN_STATION_PAIR_INDEX = "train_station_pair_index.idx";
-const char* StoragePaths::ORDER_TRAIN_DATE_INDEX = "order_train_date_index.idx";
+const char *StoragePaths::USERS = "users.db";
+const char *StoragePaths::TRAINS = "trains.db";
+const char *StoragePaths::ORDERS = "orders.db";
+const char *StoragePaths::WAITLIST = "waitlist.db";
+const char *StoragePaths::USER_INDEX = "user_index.idx";
+const char *StoragePaths::TRAIN_INDEX = "train_index.idx";
+const char *StoragePaths::ORDER_INDEX = "order_index.idx";
+const char *StoragePaths::ORDER_USER_INDEX = "order_user_index.idx";
+const char *StoragePaths::TRAIN_STATION_INDEX = "train_station_index.idx";
+const char *StoragePaths::TRAIN_STATION_PAIR_INDEX = "train_station_pair_index.idx";
+const char *StoragePaths::ORDER_TRAIN_DATE_INDEX = "order_train_date_index.idx";
 
 // base: 基础目录路径，file: 文件名
 // 拼接基础路径和文件名，返回完整的文件路径
-static std::filesystem::path makeDataPath(const std::string& base, const char* file) {
+static std::filesystem::path makeDataPath(const std::string &base, const char *file) {
     return std::filesystem::path(base) / file;
 }
 
 // source: 源字符串，dest: 目标字符数组，size: 目标数组大小
 // 将字符串复制到字符数组
-static void copyStringField(const std::string& source, char* dest, int size) {
+static void copyStringField(const std::string &source, char *dest, int size) {
     int len = static_cast<int>(source.size());
     if (len >= size) {
         len = size - 1;
@@ -44,7 +43,7 @@ static void copyStringField(const std::string& source, char* dest, int size) {
 
 // source: 源字符数组
 // 从字符数组读取字符串，返回std::string对象
-static std::string readStringField(const char* source) {
+static std::string readStringField(const char *source) {
     return std::string(source);
 }
 
@@ -60,7 +59,7 @@ static std::string formatOrderKey(int order_id) {
 
 // from: 出发站名，to: 到达站名
 // 格式化两站为站对索引键，返回"from|to"格式的字符串
-static std::string formatStationPairKey(const std::string& from, const std::string& to) {
+static std::string formatStationPairKey(const std::string &from, const std::string &to) {
     std::string result;
     result.reserve(from.size() + to.size() + 2);
     result = from;
@@ -71,26 +70,30 @@ static std::string formatStationPairKey(const std::string& from, const std::stri
 
 // train_id: 列车ID，date: 日期
 // 格式化列车ID和日期为索引键，返回格式化后的字符串
-static std::string formatTrainDateKey(const std::string& train_id, const Date& date) {
+static std::string formatTrainDateKey(const std::string &train_id, const Date &date) {
     std::string result;
-    result.reserve(train_id.size() + 6);  // train_id + "|" + MM + DD
+    result.reserve(train_id.size() + 6); // train_id + "|" + MM + DD
     result = train_id;
     result += '|';
-    if (date.month < 10) result += '0';
+    if (date.month < 10)
+        result += '0';
     result += std::to_string(date.month);
-    if (date.day < 10) result += '0';
+    if (date.day < 10)
+        result += '0';
     result += std::to_string(date.day);
     return result;
 }
 
 // train: 列车记录，station_idx: 站点索引
 // 计算从始发站到指定站点的出发时间偏移（分钟），返回偏移量
-static int departureOffsetMinutes(const TrainRecord& train, int station_idx) {
-    if (station_idx == 0) return 0;
+static int departureOffsetMinutes(const TrainRecord &train, int station_idx) {
+    if (station_idx == 0)
+        return 0;
     int minutes = 0;
     for (int i = 0; i < station_idx; ++i) {
         minutes += train.travel_times[i];
-        if (i + 1 < station_idx) minutes += train.stopover_times[i];
+        if (i + 1 < station_idx)
+            minutes += train.stopover_times[i];
     }
     if (station_idx > 0 && station_idx < train.station_num - 1) {
         minutes += train.stopover_times[station_idx - 1];
@@ -100,7 +103,7 @@ static int departureOffsetMinutes(const TrainRecord& train, int station_idx) {
 
 // date: 原始日期，offset: 天数偏移（可正可负）
 // 计算日期加上指定天数后的新日期，返回新Date对象
-static Date addDays(const Date& date, int offset) {
+static Date addDays(const Date &date, int offset) {
     int month = date.month;
     int day = date.day;
     if (offset >= 0) {
@@ -119,7 +122,8 @@ static Date addDays(const Date& date, int offset) {
                 offset -= (remain + 1);
                 day = 1;
                 month += 1;
-                if (month > 12) month = 1;
+                if (month > 12)
+                    month = 1;
             }
         }
     } else {
@@ -131,10 +135,14 @@ static Date addDays(const Date& date, int offset) {
             } else {
                 offset -= day;
                 month -= 1;
-                if (month < 1) month = 12;
-                if (month == 2) day = 28;
-                else if (month == 4 || month == 6 || month == 9 || month == 11) day = 30;
-                else day = 31;
+                if (month < 1)
+                    month = 12;
+                if (month == 2)
+                    day = 28;
+                else if (month == 4 || month == 6 || month == 9 || month == 11)
+                    day = 30;
+                else
+                    day = 31;
             }
         }
     }
@@ -143,7 +151,7 @@ static Date addDays(const Date& date, int offset) {
 
 // user: 用户记录，bin: 输出的二进制用户记录
 // 将用户记录转为二进制格式
-static void encodeUser(const UserRecord& user, BinaryUserRecord& bin) {
+static void encodeUser(const UserRecord &user, BinaryUserRecord &bin) {
     copyStringField(user.username, bin.username, sizeof(bin.username));
     copyStringField(user.password, bin.password, sizeof(bin.password));
     copyStringField(user.name, bin.name, sizeof(bin.name));
@@ -155,7 +163,7 @@ static void encodeUser(const UserRecord& user, BinaryUserRecord& bin) {
 
 // bin: 二进制用户记录，user: 输出的用户记录
 // 将二进制用户记录转为用户记录
-static void decodeUser(const BinaryUserRecord& bin, UserRecord& user) {
+static void decodeUser(const BinaryUserRecord &bin, UserRecord &user) {
     user.username = readStringField(bin.username);
     user.password = readStringField(bin.password);
     user.name = readStringField(bin.name);
@@ -165,7 +173,7 @@ static void decodeUser(const BinaryUserRecord& bin, UserRecord& user) {
 
 // train: 列车记录，bin: 输出的二进制列车记录
 // 将列车记录转为二进制格式
-static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
+static void encodeTrain(const TrainRecord &train, BinaryTrainRecord &bin) {
     copyStringField(train.train_id, bin.train_id, sizeof(bin.train_id));
     bin.station_num = train.station_num;
     bin.seat_num = train.seat_num;
@@ -182,8 +190,10 @@ static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
 
     // 只写入有数据的区间，其余位置清零
     int segCount = sn - 1;
-    if (segCount < 0) segCount = 0;
-    if (segCount > MAX_PRICE_SEGMENTS) segCount = MAX_PRICE_SEGMENTS;
+    if (segCount < 0)
+        segCount = 0;
+    if (segCount > MAX_PRICE_SEGMENTS)
+        segCount = MAX_PRICE_SEGMENTS;
     for (int i = 0; i < segCount; ++i) {
         bin.prices[i] = train.prices[i];
         bin.travel_times[i] = train.travel_times[i];
@@ -197,7 +207,8 @@ static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
 
     // 只写入有数据的停留时间
     int stopCount = train.station_num > 1 ? train.station_num - 2 : 0;
-    if (stopCount > MAX_TRAVEL_SEGMENTS) stopCount = MAX_TRAVEL_SEGMENTS;
+    if (stopCount > MAX_TRAVEL_SEGMENTS)
+        stopCount = MAX_TRAVEL_SEGMENTS;
     for (int i = 0; i < stopCount; ++i) {
         bin.stopover_times[i] = train.stopover_times[i];
     }
@@ -219,22 +230,25 @@ static void encodeTrain(const TrainRecord& train, BinaryTrainRecord& bin) {
 
 // bin: 二进制列车记录，train: 输出的列车记录
 // 将二进制列车记录转为列车记录
-static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
+static void decodeTrain(const BinaryTrainRecord &bin, TrainRecord &train) {
     train.train_id = readStringField(bin.train_id);
     train.station_num = bin.station_num;
     train.seat_num = bin.seat_num;
     train.max_seat_num = bin.max_seat_num;
 
     int sn = bin.station_num;
-    if (sn > MAX_STATIONS) sn = MAX_STATIONS;
+    if (sn > MAX_STATIONS)
+        sn = MAX_STATIONS;
     train.stations.clear();
     for (int i = 0; i < sn; ++i) {
         train.stations.push_back(readStringField(bin.stations[i]));
     }
 
     int segCount = train.station_num - 1;
-    if (segCount < 0) segCount = 0;
-    if (segCount > MAX_PRICE_SEGMENTS) segCount = MAX_PRICE_SEGMENTS;
+    if (segCount < 0)
+        segCount = 0;
+    if (segCount > MAX_PRICE_SEGMENTS)
+        segCount = MAX_PRICE_SEGMENTS;
     train.prices.clear();
     train.travel_times.clear();
     for (int i = 0; i < segCount; ++i) {
@@ -243,7 +257,8 @@ static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
     }
 
     int stopCount = train.station_num > 1 ? train.station_num - 2 : 0;
-    if (stopCount > MAX_TRAVEL_SEGMENTS) stopCount = MAX_TRAVEL_SEGMENTS;
+    if (stopCount > MAX_TRAVEL_SEGMENTS)
+        stopCount = MAX_TRAVEL_SEGMENTS;
     train.stopover_times.clear();
     for (int i = 0; i < stopCount; ++i) {
         train.stopover_times.push_back(bin.stopover_times[i]);
@@ -257,7 +272,7 @@ static void decodeTrain(const BinaryTrainRecord& bin, TrainRecord& train) {
 
 // order: 订单记录，bin: 输出的二进制订单记录
 // 将订单记录转为二进制格式
-static void encodeOrder(const OrderRecord& order, BinaryOrderRecord& bin) {
+static void encodeOrder(const OrderRecord &order, BinaryOrderRecord &bin) {
     bin.order_id = order.order_id;
     copyStringField(order.username, bin.username, sizeof(bin.username));
     copyStringField(order.train_id, bin.train_id, sizeof(bin.train_id));
@@ -276,7 +291,7 @@ static void encodeOrder(const OrderRecord& order, BinaryOrderRecord& bin) {
 
 // bin: 二进制订单记录，order: 输出的订单记录
 // 将二进制订单记录转为订单记录
-static void decodeOrder(const BinaryOrderRecord& bin, OrderRecord& order) {
+static void decodeOrder(const BinaryOrderRecord &bin, OrderRecord &order) {
     order.order_id = bin.order_id;
     order.username = readStringField(bin.username);
     order.train_id = readStringField(bin.train_id);
@@ -298,7 +313,7 @@ StorageManager::StorageManager()
 // 析构函数：清理StorageManager资源
 // 释放所有索引对象的内存
 StorageManager::~StorageManager() {
-    delete userIndex_; 
+    delete userIndex_;
     delete trainIndex_;
     delete orderIndex_;
     delete orderUserIndex_;
@@ -308,7 +323,7 @@ StorageManager::~StorageManager() {
 
 // basePath: 数据存储目录路径
 // 初始化存储管理器，创建必要的文件和索引，成功返回true
-bool StorageManager::initialize(const std::string& basePath) {
+bool StorageManager::initialize(const std::string &basePath) {
     base_path_ = basePath;
     std::filesystem::create_directories(base_path_);
 
@@ -356,7 +371,8 @@ bool StorageManager::initialize(const std::string& basePath) {
                 int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
                 BinaryTrainRecord bin;
                 trainRiver_.read(bin, position);
-                if (bin.deleted) continue;
+                if (bin.deleted)
+                    continue;
                 for (int a = 0; a < bin.station_num; ++a) {
                     for (int b = a + 1; b < bin.station_num; ++b) {
                         std::string pairKey = formatStationPairKey(
@@ -380,14 +396,17 @@ std::string StorageManager::basePath() const {
 
 // user: 要添加的用户记录
 // 添加用户到存储，用户名已存在返回false，成功返回true
-bool StorageManager::addUser(const UserRecord& user) {
+bool StorageManager::addUser(const UserRecord &user) {
     int position;
-    if (userIndex_->find(user.username.c_str(), position)) return false;
+    if (userIndex_->find(user.username.c_str(), position))
+        return false;
     BinaryUserRecord bin;
     encodeUser(user, bin);
     int offset = userRiver_.write(bin);
-    if (offset < 0) return false;
-    if (!userIndex_->insert(user.username.c_str(), offset)) return false;
+    if (offset < 0)
+        return false;
+    if (!userIndex_->insert(user.username.c_str(), offset))
+        return false;
     int userCount = 0;
     userRiver_.get_info(userCount, 1);
     userRiver_.write_info(userCount + 1, 1);
@@ -396,21 +415,24 @@ bool StorageManager::addUser(const UserRecord& user) {
 
 // username: 用户名，user: 输出的用户记录
 // 根据用户名加载用户记录，用户不存在返回false，成功返回true
-bool StorageManager::loadUser(const std::string& username, UserRecord& user) const {
+bool StorageManager::loadUser(const std::string &username, UserRecord &user) const {
     int position;
-    if (!userIndex_->find(username.c_str(), position)) return false;
+    if (!userIndex_->find(username.c_str(), position))
+        return false;
     BinaryUserRecord bin;
     userRiver_.read(bin, position);
-    if (bin.deleted) return false;
+    if (bin.deleted)
+        return false;
     decodeUser(bin, user);
     return true;
 }
 
 // user: 更新后的用户记录
 // 更新用户信息，用户不存在返回false，成功返回true
-bool StorageManager::updateUser(const UserRecord& user) {
+bool StorageManager::updateUser(const UserRecord &user) {
     int position;
-    if (!userIndex_->find(user.username.c_str(), position)) return false;
+    if (!userIndex_->find(user.username.c_str(), position))
+        return false;
     BinaryUserRecord bin;
     encodeUser(user, bin);
     userRiver_.update(bin, position);
@@ -419,20 +441,20 @@ bool StorageManager::updateUser(const UserRecord& user) {
 
 // train: 要添加的列车记录
 // 添加列车到存储，列车ID已存在返回false，成功返回true
-bool StorageManager::addTrain(const TrainRecord& train) {
+bool StorageManager::addTrain(const TrainRecord &train) {
     int position;
-    if (trainIndex_->find(train.train_id.c_str(), position)) 
+    if (trainIndex_->find(train.train_id.c_str(), position))
         return false;
     BinaryTrainRecord bin;
     encodeTrain(train, bin);
     int offset = trainRiver_.write(bin);
-    if (offset < 0) 
+    if (offset < 0)
         return false;
-    if (!trainIndex_->insert(train.train_id.c_str(), offset)) 
+    if (!trainIndex_->insert(train.train_id.c_str(), offset))
         return false;
     // 插入单站索引和站对索引
     for (int i = 0; i < train.station_num; ++i) {
-        if (!trainStationIndex_->insert(train.stations[i].c_str(), offset)) 
+        if (!trainStationIndex_->insert(train.stations[i].c_str(), offset))
             return false;
         // 对于每个后面的站，插入 (站i, 站j) 的站对索引
         for (int j = i + 1; j < train.station_num; ++j) {
@@ -449,21 +471,24 @@ bool StorageManager::addTrain(const TrainRecord& train) {
 
 // train_id: 列车ID，train: 输出的列车记录
 // 根据列车ID加载列车记录，列车不存在返回false，成功返回true
-bool StorageManager::loadTrain(const std::string& train_id, TrainRecord& train) const {
+bool StorageManager::loadTrain(const std::string &train_id, TrainRecord &train) const {
     int position;
-    if (!trainIndex_->find(train_id.c_str(), position)) return false;
+    if (!trainIndex_->find(train_id.c_str(), position))
+        return false;
     BinaryTrainRecord bin;
     trainRiver_.read(bin, position);
-    if (bin.deleted) return false;
+    if (bin.deleted)
+        return false;
     decodeTrain(bin, train);
     return true;
 }
 
 // train: 更新后的列车记录
 // 更新列车信息，列车不存在返回false，成功返回true
-bool StorageManager::updateTrain(const TrainRecord& train) {
+bool StorageManager::updateTrain(const TrainRecord &train) {
     int position;
-    if (!trainIndex_->find(train.train_id.c_str(), position)) return false;
+    if (!trainIndex_->find(train.train_id.c_str(), position))
+        return false;
     BinaryTrainRecord bin;
     encodeTrain(train, bin);
     trainRiver_.update(bin, position);
@@ -472,12 +497,14 @@ bool StorageManager::updateTrain(const TrainRecord& train) {
 
 // train_id: 要删除的列车ID
 // 删除列车（软删除），列车不存在或已删除返回false，成功返回true
-bool StorageManager::removeTrain(const std::string& train_id) {
+bool StorageManager::removeTrain(const std::string &train_id) {
     int position;
-    if (!trainIndex_->find(train_id.c_str(), position)) return false;
+    if (!trainIndex_->find(train_id.c_str(), position))
+        return false;
     BinaryTrainRecord bin;
     trainRiver_.read(bin, position);
-    if (bin.deleted) return false;
+    if (bin.deleted)
+        return false;
     bin.deleted = true;
     trainRiver_.update(bin, position);
     trainIndex_->remove(train_id.c_str(), position);
@@ -496,23 +523,28 @@ bool StorageManager::removeTrain(const std::string& train_id) {
 
 // order: 要添加的订单记录
 // 添加订单到存储，自动分配订单ID，成功返回true
-bool StorageManager::addOrder(const OrderRecord& order) {
+bool StorageManager::addOrder(const OrderRecord &order) {
     OrderRecord copy = order;
     copy.order_id = next_order_id_;
     BinaryOrderRecord bin;
     encodeOrder(copy, bin);
     int offset = orderRiver_.write(bin);
-    if (offset < 0) return false;
+    if (offset < 0)
+        return false;
     std::string key = formatOrderKey(copy.order_id);
-    if (!orderIndex_->insert(key.c_str(), offset)) return false;
-    if (!orderUserIndex_->insert(copy.username.c_str(), offset)) return false;
+    if (!orderIndex_->insert(key.c_str(), offset))
+        return false;
+    if (!orderUserIndex_->insert(copy.username.c_str(), offset))
+        return false;
     TrainRecord train;
-    if (!loadTrain(copy.train_id, train)) return false;
+    if (!loadTrain(copy.train_id, train))
+        return false;
     int depart_offset = train.start_time.hour * 60 + train.start_time.minute + departureOffsetMinutes(train, copy.from_idx);
     int day_offset = depart_offset / 1440;
     Date run_start_date = addDays(copy.date, -day_offset);
     std::string trainDateKey = formatTrainDateKey(copy.train_id, run_start_date);
-    if (!orderTrainDateIndex_->insert(trainDateKey.c_str(), offset)) return false;
+    if (!orderTrainDateIndex_->insert(trainDateKey.c_str(), offset))
+        return false;
     int totalOrders = 0;
     orderRiver_.get_info(totalOrders, 1);
     orderRiver_.write_info(totalOrders + 1, 1);
@@ -522,32 +554,36 @@ bool StorageManager::addOrder(const OrderRecord& order) {
 
 // order_id: 订单ID，order: 输出的订单记录
 // 根据订单ID加载订单记录，订单不存在返回false，成功返回true
-bool StorageManager::loadOrder(int order_id, OrderRecord& order) const {
+bool StorageManager::loadOrder(int order_id, OrderRecord &order) const {
     std::string key = formatOrderKey(order_id);
     int position;
-    if (!orderIndex_->find(key.c_str(), position)) return false;
+    if (!orderIndex_->find(key.c_str(), position))
+        return false;
     BinaryOrderRecord bin;
     orderRiver_.read(bin, position);
-    if (bin.deleted) return false;
+    if (bin.deleted)
+        return false;
     decodeOrder(bin, order);
     return true;
 }
 
 // username: 用户名，orders: 输出订单向量，ids: 输出订单ID向量
 // 加载指定用户的所有订单，成功返回true
-bool StorageManager::loadOrdersByUser(const std::string& username, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const {
+bool StorageManager::loadOrdersByUser(const std::string &username, sjtu::vector<OrderRecord> &orders, sjtu::vector<int> &ids) const {
     orders.clear();
     ids.clear();
     int totalOrders = 0;
     orderRiver_.get_info(totalOrders, 1);
-    if (totalOrders <= 0) return true;
+    if (totalOrders <= 0)
+        return true;
 
-    int* offsets = new int[totalOrders];
+    int *offsets = new int[totalOrders];
     int count = orderUserIndex_->findAll(username.c_str(), offsets, totalOrders);
     for (int i = 0; i < count; ++i) {
         BinaryOrderRecord bin;
         orderRiver_.read(bin, offsets[i]);
-        if (bin.deleted) continue;
+        if (bin.deleted)
+            continue;
         OrderRecord order;
         decodeOrder(bin, order);
         orders.push_back(order);
@@ -559,18 +595,20 @@ bool StorageManager::loadOrdersByUser(const std::string& username, sjtu::vector<
 
 // station: 站点名称，trains: 输出列车向量
 // 加载经过指定站点的所有列车，成功返回true
-bool StorageManager::loadTrainsByStation(const std::string& station, sjtu::vector<TrainRecord>& trains) const {
+bool StorageManager::loadTrainsByStation(const std::string &station, sjtu::vector<TrainRecord> &trains) const {
     trains.clear();
     int totalTrains = 0;
     trainRiver_.get_info(totalTrains, 1);
-    if (totalTrains <= 0) return true;
+    if (totalTrains <= 0)
+        return true;
 
-    int* offsets = new int[totalTrains];
+    int *offsets = new int[totalTrains];
     int count = trainStationIndex_->findAll(station.c_str(), offsets, totalTrains);
     for (int i = 0; i < count; ++i) {
         BinaryTrainRecord bin;
         trainRiver_.read(bin, offsets[i]);
-        if (bin.deleted) continue;
+        if (bin.deleted)
+            continue;
         TrainRecord train;
         decodeTrain(bin, train);
         trains.push_back(train);
@@ -581,19 +619,21 @@ bool StorageManager::loadTrainsByStation(const std::string& station, sjtu::vecto
 
 // from: 出发站名，to: 到达站名，trains: 输出列车向量
 // 通过站对索引快速加载同时经过from和to且from在to之前的列车，成功返回true
-bool StorageManager::loadTrainsByStationPair(const std::string& from, const std::string& to, sjtu::vector<TrainRecord>& trains) const {
+bool StorageManager::loadTrainsByStationPair(const std::string &from, const std::string &to, sjtu::vector<TrainRecord> &trains) const {
     trains.clear();
     int totalTrains = 0;
     trainRiver_.get_info(totalTrains, 1);
-    if (totalTrains <= 0) return true;
+    if (totalTrains <= 0)
+        return true;
 
     std::string pairKey = formatStationPairKey(from, to);
-    int* offsets = new int[totalTrains];
+    int *offsets = new int[totalTrains];
     int count = trainStationPairIndex_->findAll(pairKey.c_str(), offsets, totalTrains);
     for (int i = 0; i < count; ++i) {
         BinaryTrainRecord bin;
         trainRiver_.read(bin, offsets[i]);
-        if (bin.deleted) continue;
+        if (bin.deleted)
+            continue;
         TrainRecord train;
         decodeTrain(bin, train);
         trains.push_back(train);
@@ -604,20 +644,22 @@ bool StorageManager::loadTrainsByStationPair(const std::string& from, const std:
 
 // train_id: 列车ID，date: 日期，orders: 输出订单向量，ids: 输出订单ID向量
 // 加载指定列车指定日期的所有订单，成功返回true
-bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Date& date, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const {
+bool StorageManager::loadOrdersByTrainDate(const std::string &train_id, const Date &date, sjtu::vector<OrderRecord> &orders, sjtu::vector<int> &ids) const {
     orders.clear();
     ids.clear();
     int totalOrders = 0;
     orderRiver_.get_info(totalOrders, 1);
-    if (totalOrders <= 0) return true;
+    if (totalOrders <= 0)
+        return true;
 
     std::string key = formatTrainDateKey(train_id, date);
-    int* offsets = new int[totalOrders];
+    int *offsets = new int[totalOrders];
     int count = orderTrainDateIndex_->findAll(key.c_str(), offsets, totalOrders);
     for (int i = 0; i < count; ++i) {
         BinaryOrderRecord bin;
         orderRiver_.read(bin, offsets[i]);
-        if (bin.deleted) continue;
+        if (bin.deleted)
+            continue;
         OrderRecord order;
         decodeOrder(bin, order);
         orders.push_back(order);
@@ -629,10 +671,11 @@ bool StorageManager::loadOrdersByTrainDate(const std::string& train_id, const Da
 
 // order_id: 要更新的订单ID，order: 更新后的订单记录
 // 更新订单信息，订单不存在返回false，成功返回true
-bool StorageManager::updateOrder(int order_id, const OrderRecord& order) {
+bool StorageManager::updateOrder(int order_id, const OrderRecord &order) {
     std::string key = formatOrderKey(order_id);
     int position;
-    if (!orderIndex_->find(key.c_str(), position)) return false;
+    if (!orderIndex_->find(key.c_str(), position))
+        return false;
     BinaryOrderRecord bin;
     encodeOrder(order, bin);
     bin.order_id = order_id;

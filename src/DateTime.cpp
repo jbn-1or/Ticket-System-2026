@@ -5,8 +5,8 @@ namespace ticket {
 // month: 月份(1-12)
 // 获取指定月份的天数，无效月份返回31
 static int monthDays(int month) {
-    static const int table[] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
-    if (month >= 1 && month <= 12) 
+    static const int table[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month >= 1 && month <= 12)
         return table[month];
     return 31;
 }
@@ -15,7 +15,7 @@ static int monthDays(int month) {
 // 将整数格式化为两位数字符串，不足补零
 static std::string pad2(int value) {
     std::string s = std::to_string(value);
-    if (s.size() < 2) 
+    if (s.size() < 2)
         s = "0" + s;
     return s;
 }
@@ -27,11 +27,11 @@ Date::Date(int month_, int day_) : month(month_), day(day_) {}
 
 // text: 格式为"mm-dd"的日期字符串
 // 解析日期字符串，返回Date对象
-Date Date::parse(const std::string& text) {
+Date Date::parse(const std::string &text) {
     Date d;
     if (text.size() >= 5 && text[2] == '-') {
-        d.month = std::stoi(text.substr(0,2));
-        d.day = std::stoi(text.substr(3,2));
+        d.month = std::stoi(text.substr(0, 2));
+        d.day = std::stoi(text.substr(3, 2));
     }
     return d;
 }
@@ -42,13 +42,14 @@ std::string Date::toString() const {
 }
 
 // 比较两个日期大小，this < other返回true
-bool Date::operator<(const Date& other) const {
-    if (month != other.month) return month < other.month;
+bool Date::operator<(const Date &other) const {
+    if (month != other.month)
+        return month < other.month;
     return day < other.day;
 }
 
 // 判断两个日期是否相等，相等返回true
-bool Date::operator==(const Date& other) const {
+bool Date::operator==(const Date &other) const {
     return month == other.month && day == other.day;
 }
 
@@ -59,11 +60,11 @@ Time::Time(int hour_, int minute_) : hour(hour_), minute(minute_) {}
 
 // text: 格式为"hh:mm"的时间字符串
 // 解析时间字符串，返回Time对象
-Time Time::parse(const std::string& text) {
+Time Time::parse(const std::string &text) {
     Time t;
     if (text.size() >= 5 && text[2] == ':') {
-        t.hour = std::stoi(text.substr(0,2));
-        t.minute = std::stoi(text.substr(3,2));
+        t.hour = std::stoi(text.substr(0, 2));
+        t.minute = std::stoi(text.substr(3, 2));
     }
     return t;
 }
@@ -74,20 +75,21 @@ std::string Time::toString() const {
 }
 
 // 比较两个时间大小，this < other返回true
-bool Time::operator<(const Time& other) const {
-    if (hour != other.hour) return hour < other.hour;
+bool Time::operator<(const Time &other) const {
+    if (hour != other.hour)
+        return hour < other.hour;
     return minute < other.minute;
 }
 
 // 判断两个时间是否相等，相等返回true
-bool Time::operator==(const Time& other) const {
+bool Time::operator==(const Time &other) const {
     return hour == other.hour && minute == other.minute;
 }
 
 // 默认构造函数：初始化日期和时间为空
 DateTime::DateTime() : date(), time() {}
 // 构造函数：用指定日期和时间创建DateTime
-DateTime::DateTime(const Date& date_, const Time& time_) : date(date_), time(time_) {}
+DateTime::DateTime(const Date &date_, const Time &time_) : date(date_), time(time_) {}
 
 // 将DateTime对象转换为"mm-dd hh:mm"格式的字符串
 std::string DateTime::toString() const {
@@ -95,40 +97,42 @@ std::string DateTime::toString() const {
 }
 
 // 比较两个日期时间大小，this < other返回true
-bool DateTime::operator<(const DateTime& other) const {
-    if (date == other.date) return time < other.time;
+bool DateTime::operator<(const DateTime &other) const {
+    if (date == other.date)
+        return time < other.time;
     return date < other.date;
 }
 
 // 判断两个日期时间是否相等，相等返回true
-bool DateTime::operator==(const DateTime& other) const {
+bool DateTime::operator==(const DateTime &other) const {
     return date == other.date && time == other.time;
 }
 
 // begin: 范围开始日期，end: 范围结束日期，target: 目标日期
 // 判断目标日期是否在[begin, end]范围内，在范围内返回true
-bool DateTimeUtils::inRange(const Date& begin, const Date& end, const Date& target) {
+bool DateTimeUtils::inRange(const Date &begin, const Date &end, const Date &target) {
     return !(target < begin) && !(end < target);
 }
 
 // d: 日期对象
 // 计算日期是一年中的第几天，返回天数
-static int dayOfYear(const Date& d) {
+static int dayOfYear(const Date &d) {
     int days = 0;
-    for (int m = 1; m < d.month; ++m) days += monthDays(m);
+    for (int m = 1; m < d.month; ++m)
+        days += monthDays(m);
     days += d.day;
     return days;
 }
 
 // from: 起始日期，to: 结束日期
 // 计算两个日期之间的天数差，返回to - from
-int DateTimeUtils::dayOffset(const Date& from, const Date& to) {
+int DateTimeUtils::dayOffset(const Date &from, const Date &to) {
     return dayOfYear(to) - dayOfYear(from);
 }
 
 // d: 原始日期，offset: 天数偏移
 // 计算日期加上指定天数后的新日期，返回新Date对象
-static Date addDays(const Date& d, int offset) {
+static Date addDays(const Date &d, int offset) {
     int month = d.month;
     int day = d.day;
     if (offset >= 0) {
@@ -141,7 +145,8 @@ static Date addDays(const Date& d, int offset) {
                 offset -= (remain + 1);
                 day = 1;
                 month += 1;
-                if (month > 12) month = 1;
+                if (month > 12)
+                    month = 1;
             }
         }
     } else {
@@ -153,7 +158,8 @@ static Date addDays(const Date& d, int offset) {
             } else {
                 offset -= day;
                 month -= 1;
-                if (month < 1) month = 12;
+                if (month < 1)
+                    month = 12;
                 day = monthDays(month);
             }
         }
@@ -163,7 +169,7 @@ static Date addDays(const Date& d, int offset) {
 
 // dt: 原始日期时间，minutes: 分钟偏移
 // 计算日期时间加上指定分钟后的新日期时间，返回新DateTime对象
-DateTime addMinutes(const DateTime& dt, int minutes) {
+DateTime addMinutes(const DateTime &dt, int minutes) {
     int total = dt.time.hour * 60 + dt.time.minute + minutes;
     int dayOffset = 0;
     while (total < 0) {

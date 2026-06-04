@@ -15,7 +15,7 @@ void Command::clear() {
 
 // key: 参数的键名，value: 参数的值
 // 向Command对象添加一个键值对参数，最多支持16个参数
-void Command::addParam(char key, const std::string& value) {
+void Command::addParam(char key, const std::string &value) {
     if (param_count < 16) {
         params[param_count].key = key;
         params[param_count].value = value;
@@ -25,10 +25,11 @@ void Command::addParam(char key, const std::string& value) {
 
 // key: 要查找的参数键名
 // 根据键名获取参数值，不存在则返回空字符串
-const std::string& Command::getParam(char key) const {
+const std::string &Command::getParam(char key) const {
     static std::string empty;
     for (int i = 0; i < param_count; ++i) {
-        if (params[i].key == key) return params[i].value;
+        if (params[i].key == key)
+            return params[i].value;
     }
     return empty;
 }
@@ -37,45 +38,46 @@ const std::string& Command::getParam(char key) const {
 // 检查Command对象是否包含指定键名的参数，存在返回true，否则返回false
 bool Command::hasParam(char key) const {
     for (int i = 0; i < param_count; ++i) {
-        if (params[i].key == key) return true;
+        if (params[i].key == key)
+            return true;
     }
     return false;
 }
 
 // name: 命令名称字符串
 // 将命令名字符串转换为对应的CommandType枚举值，未知命令返回Unknown
-CommandType CommandParser::toType(const std::string& name) {
-    if (name == "add_user") 
+CommandType CommandParser::toType(const std::string &name) {
+    if (name == "add_user")
         return CommandType::AddUser;
-    if (name == "login") 
+    if (name == "login")
         return CommandType::Login;
-    if (name == "logout") 
+    if (name == "logout")
         return CommandType::Logout;
-    if (name == "query_profile") 
+    if (name == "query_profile")
         return CommandType::QueryProfile;
-    if (name == "modify_profile") 
+    if (name == "modify_profile")
         return CommandType::ModifyProfile;
-    if (name == "add_train") 
+    if (name == "add_train")
         return CommandType::AddTrain;
-    if (name == "delete_train") 
+    if (name == "delete_train")
         return CommandType::DeleteTrain;
-    if (name == "release_train") 
+    if (name == "release_train")
         return CommandType::ReleaseTrain;
-    if (name == "query_train") 
+    if (name == "query_train")
         return CommandType::QueryTrain;
-    if (name == "query_ticket") 
+    if (name == "query_ticket")
         return CommandType::QueryTicket;
-    if (name == "query_transfer") 
+    if (name == "query_transfer")
         return CommandType::QueryTransfer;
-    if (name == "buy_ticket") 
+    if (name == "buy_ticket")
         return CommandType::BuyTicket;
-    if (name == "query_order") 
+    if (name == "query_order")
         return CommandType::QueryOrder;
-    if (name == "refund_ticket") 
+    if (name == "refund_ticket")
         return CommandType::RefundTicket;
-    if (name == "clean") 
+    if (name == "clean")
         return CommandType::Clean;
-    if (name == "exit") 
+    if (name == "exit")
         return CommandType::Exit;
     return CommandType::Unknown;
 }
@@ -88,7 +90,7 @@ static bool isSpace(char c) {
 
 // line: 待解析的命令行字符串
 // 解析命令行字符串，提取时间戳、命令类型和参数，返回Command对象
-Command CommandParser::parse(const std::string& line) const {
+Command CommandParser::parse(const std::string &line) const {
     Command cmd;
     size_t pos = 0;
     size_t len = line.size();
@@ -104,10 +106,10 @@ Command CommandParser::parse(const std::string& line) const {
     }
 
     // 提取命令类型
-    while (pos < len && isSpace(line[pos])) 
+    while (pos < len && isSpace(line[pos]))
         pos++;
     size_t start = pos;
-    while (pos < len && !isSpace(line[pos])) 
+    while (pos < len && !isSpace(line[pos]))
         pos++;
     if (start < pos) {
         std::string name = line.substr(start, pos - start);
@@ -116,16 +118,16 @@ Command CommandParser::parse(const std::string& line) const {
 
     // 提取参数
     while (pos < len) {
-        while (pos < len && isSpace(line[pos])) 
+        while (pos < len && isSpace(line[pos]))
             pos++;
-        if (pos + 1 >= len || line[pos] != '-') 
+        if (pos + 1 >= len || line[pos] != '-')
             break;
         char key = line[pos + 1];
         pos += 2;
-        while (pos < len && isSpace(line[pos])) 
+        while (pos < len && isSpace(line[pos]))
             pos++;
         start = pos;
-        while (pos < len && !isSpace(line[pos])) 
+        while (pos < len && !isSpace(line[pos]))
             pos++;
         if (start < pos) {
             cmd.addParam(key, line.substr(start, pos - start));

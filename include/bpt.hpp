@@ -1,11 +1,11 @@
-#include <iostream>
-#include <string>
-#include <cstdio>
-#include <fstream>
-#include <filesystem>
-#include <cstring>
 #include <climits>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <limits>
+#include <string>
 
 // 每个键的最大字节长度
 const int KEY_LEN = 65;
@@ -21,7 +21,7 @@ struct FileHeader {
 };
 
 // B+树节点结构体，存储节点数据（模板类）
-template<typename ValueType = int>
+template <typename ValueType = int>
 struct Node {
     // 根据 NODE_SIZE、KEY_LEN 与 ValueType 大小计算每节点可容纳的最大键数（保守估计，编译期计算）
     static constexpr size_t header_bytes() {
@@ -31,7 +31,8 @@ struct Node {
         return KEY_LEN + sizeof(ValueType) + sizeof(int); // key + value + child-slot
     }
     static constexpr int compute_max_keys() {
-        if (NODE_SIZE <= header_bytes() + per_entry_bytes() * 3) return 3; // 至少保留3个键以保证分裂/合并逻辑
+        if (NODE_SIZE <= header_bytes() + per_entry_bytes() * 3)
+            return 3; // 至少保留3个键以保证分裂/合并逻辑
         return static_cast<int>((NODE_SIZE - header_bytes()) / per_entry_bytes());
     }
 
@@ -40,14 +41,14 @@ struct Node {
     static constexpr int MAX_KEY_INTERNAL_T = MAX_KEY_LEAF_T - 1;
     static constexpr int MIN_KEY_INTERNAL_T = MAX_KEY_INTERNAL_T / 2 - 1;
 
-    bool is_leaf;                        // 是否为叶子节点
-    int key_num;                         // 实际存储的key数量
-    int next;                            // 叶子节点链表的下一个节点（仅叶子节点使用）
-    int parent;                          // 父节点编号（-1表示无父）
+    bool is_leaf; // 是否为叶子节点
+    int key_num;  // 实际存储的key数量
+    int next;     // 叶子节点链表的下一个节点（仅叶子节点使用）
+    int parent;   // 父节点编号（-1表示无父）
 
-    char keys[MAX_KEY_LEAF_T][KEY_LEN];  // 键数组
-    ValueType values[MAX_KEY_LEAF_T];    // 值数组
-    int children[MAX_KEY_INTERNAL_T + 1];// 子节点索引数组（仅内部节点使用）
+    char keys[MAX_KEY_LEAF_T][KEY_LEN];   // 键数组
+    ValueType values[MAX_KEY_LEAF_T];     // 值数组
+    int children[MAX_KEY_INTERNAL_T + 1]; // 子节点索引数组（仅内部节点使用）
 
     Node() {
         is_leaf = true;
@@ -62,20 +63,20 @@ struct Node {
 
 static_assert(sizeof(Node<int>) <= NODE_SIZE, "B+Tree node size exceeds NODE_SIZE");
 
-template<typename ValueType = int>
+template <typename ValueType = int>
 class FileManager {
 private:
     std::fstream file;
-    std::string filename;  // 文件名
-    FileHeader header;     // 文件头
+    std::string filename; // 文件名
+    FileHeader header;    // 文件头
     static constexpr size_t BLOCK_SIZE = sizeof(Node<ValueType>);
     static constexpr int CACHE_SIZE = 16;
 
     // 缓存条目结构体，用于节点缓存
     struct CacheEntry {
-        int pos;                // 节点位置
-        Node<ValueType> node;   // 节点数据
-        bool valid;             // 缓存是否有效
+        int pos;              // 节点位置
+        Node<ValueType> node; // 节点数据
+        bool valid;           // 缓存是否有效
     };
     CacheEntry cache_[CACHE_SIZE];
 
@@ -83,7 +84,7 @@ private:
         return pos % CACHE_SIZE;
     }
 
-    bool tryGetCachedNode(int pos, Node<ValueType>& node) {
+    bool tryGetCachedNode(int pos, Node<ValueType> &node) {
         int idx = cacheIndex(pos);
         if (cache_[idx].valid && cache_[idx].pos == pos) {
             node = cache_[idx].node;
@@ -92,15 +93,15 @@ private:
         return false;
     }
 
-    void updateCache(int pos, const Node<ValueType>& node) {
+    void updateCache(int pos, const Node<ValueType> &node) {
         int idx = cacheIndex(pos);
         cache_[idx].valid = true;
         cache_[idx].pos = pos;
         cache_[idx].node = node;
     }
-    
+
 public:
-    FileManager(const std::string& fname) : filename(fname) {
+    FileManager(const std::string &fname) : filename(fname) {
         for (int i = 0; i < CACHE_SIZE; ++i) {
             cache_[i].valid = false;
             cache_[i].pos = -1;
@@ -124,25 +125,25 @@ public:
             readHeader();
         }
     }
-    
+
     // 文件头写回磁盘
     ~FileManager() {
         writeHeader();
         file.close();
     }
-    
+
     // 读文件头
     void readHeader() {
         file.seekg(0);
-        file.read(reinterpret_cast<char*>(&header), sizeof(FileHeader));
+        file.read(reinterpret_cast<char *>(&header), sizeof(FileHeader));
     }
-    
+
     // 文件头写入
     void writeHeader() {
         file.seekp(0);
-        file.write(reinterpret_cast<char*>(&header), sizeof(FileHeader));
+        file.write(reinterpret_cast<char *>(&header), sizeof(FileHeader));
     }
-    
+
     // 分配node,优先从free取
     int allocateBlock() {
         if (header.free_list != -1) {
@@ -155,7 +156,7 @@ public:
         // 用新块
         return header.total_blocks++;
     }
-    
+
     // 回收删除的节点
     void freeBlock(int pos) {
         Node<ValueType> temp;
@@ -164,25 +165,25 @@ public:
         header.free_list = pos;
         writeNode(pos, temp);
     }
-    
+
     // 读任意node
-    void readNode(int pos, Node<ValueType>& node) {
+    void readNode(int pos, Node<ValueType> &node) {
         if (tryGetCachedNode(pos, node)) {
             return;
         }
         // 计算偏移：文件头大小
         file.seekg(sizeof(FileHeader) + pos * BLOCK_SIZE);
-        file.read(reinterpret_cast<char*>(&node), BLOCK_SIZE);
+        file.read(reinterpret_cast<char *>(&node), BLOCK_SIZE);
         updateCache(pos, node);
     }
-    
+
     // 将任意node写入
-    void writeNode(int pos, const Node<ValueType>& node) {
+    void writeNode(int pos, const Node<ValueType> &node) {
         file.seekp(sizeof(FileHeader) + pos * BLOCK_SIZE);
-        file.write(reinterpret_cast<const char*>(&node), BLOCK_SIZE);
+        file.write(reinterpret_cast<const char *>(&node), BLOCK_SIZE);
         updateCache(pos, node);
     }
-    
+
     int getRoot() {
         return header.root_pos;
     }
@@ -197,22 +198,23 @@ public:
     }
 };
 
-template<typename ValueType = int>
+template <typename ValueType = int>
 class BPlusTree {
 private:
     FileManager<ValueType> fm;
 
-    int keyValueCompare(const char* a_key, ValueType a_val, const char* b_key, ValueType b_val) {
+    int keyValueCompare(const char *a_key, ValueType a_val, const char *b_key, ValueType b_val) {
         int key_cmp = strcmp(a_key, b_key);
         if (key_cmp != 0) {
             return key_cmp;
         } else if (a_val == b_val) {
             return 0;
-        } else return (a_val > b_val) ? 1 : -1;
+        } else
+            return (a_val > b_val) ? 1 : -1;
     }
 
     // 找到目标(key,value)位置
-    int findKeyValuePos(Node<ValueType>& node, const char* key, ValueType value) {
+    int findKeyValuePos(Node<ValueType> &node, const char *key, ValueType value) {
         int left = 0, right = node.key_num - 1;
         int result = node.key_num;
         while (left <= right) {
@@ -268,14 +270,14 @@ private:
             fm.readNode(new_node.children[new_node.key_num], last_child);
             last_child.parent = new_pos;
             fm.writeNode(new_node.children[new_node.key_num], last_child);
-            
+
             node.key_num = mid;
         }
         // 分裂后写回
         fm.writeNode(node_pos, node);
         fm.writeNode(new_pos, new_node);
         // 提升到父节点
-        const char* promote_key;
+        const char *promote_key;
         ValueType promote_value;
         if (node.is_leaf) {
             // 叶子节点，新节点的第一个元素
@@ -291,7 +293,7 @@ private:
             // 创建新的根节点
             int root_pos = fm.allocateBlock();
             Node<ValueType> root;
-            root.is_leaf = false;  // 根节点现在是内部节点
+            root.is_leaf = false; // 根节点现在是内部节点
             root.key_num = 1;
             root.parent = -1;
             strcpy(root.keys[0], promote_key);
@@ -320,7 +322,7 @@ private:
             parent.values[child_idx] = promote_value;
             parent.children[child_idx + 1] = new_pos;
             parent.key_num++;
-            
+
             fm.writeNode(parent_pos, parent);
             // 递归检查父节点是否也上溢
             if (parent.key_num >= Node<ValueType>::MAX_KEY_INTERNAL_T) {
@@ -333,7 +335,8 @@ private:
                 int parent_idx = 0;
                 if (grand_pos != -1) {
                     for (; parent_idx <= grand_parent.key_num; parent_idx++) {
-                        if (grand_parent.children[parent_idx] == parent_pos) break;
+                        if (grand_parent.children[parent_idx] == parent_pos)
+                            break;
                     }
                 }
                 splitNode(grand_pos, parent_idx, parent_pos);
@@ -345,8 +348,8 @@ private:
     void mergeNode(int parent_pos, int idx) {
         Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
-        int left_pos = parent.children[idx]; // 左节点位置
-        int right_pos = parent.children[idx + 1];// 右节点位置
+        int left_pos = parent.children[idx];      // 左节点位置
+        int right_pos = parent.children[idx + 1]; // 右节点位置
         Node<ValueType> left, right;
         fm.readNode(left_pos, left);
         fm.readNode(right_pos, right);
@@ -359,7 +362,7 @@ private:
             }
             left.key_num += right.key_num;
             left.next = right.next;
-        } 
+        }
         // 内部节点合并
         else {
             // 父节点的分隔key下移到左节点末尾
@@ -383,7 +386,7 @@ private:
             fm.readNode(right.children[right.key_num], last_child);
             last_child.parent = left_pos;
             fm.writeNode(right.children[right.key_num], last_child);
-            
+
             left.key_num += right.key_num;
         }
 
@@ -391,7 +394,7 @@ private:
         fm.freeBlock(right_pos);
 
         // 从父节点删除key和右节点指针
-            for (int i = idx; i < parent.key_num - 1; i++) {
+        for (int i = idx; i < parent.key_num - 1; i++) {
             strcpy(parent.keys[i], parent.keys[i + 1]);
             parent.values[i] = parent.values[i + 1];
             parent.children[i + 1] = parent.children[i + 2];
@@ -423,7 +426,7 @@ private:
         int parent_pos = node.parent;
         Node<ValueType> parent;
         fm.readNode(parent_pos, parent);
-        
+
         int min_key = node.is_leaf ? Node<ValueType>::MIN_KEY_LEAF_T : Node<ValueType>::MIN_KEY_INTERNAL_T;
 
         // 从左兄弟借
@@ -431,7 +434,7 @@ private:
             int left_pos = parent.children[parent_idx - 1];
             Node<ValueType> left;
             fm.readNode(left_pos, left);
-            
+
             // 左兄弟key数必须大于最小值
             if (left.key_num > min_key) {
                 if (node.is_leaf) {
@@ -460,19 +463,19 @@ private:
                     node.values[0] = parent.values[parent_idx - 1];
                     node.children[0] = left.children[left.key_num];
                     node.key_num++;
-                    
+
                     // 更新子节点parent
                     Node<ValueType> child;
                     fm.readNode(node.children[0], child);
                     child.parent = node_pos;
                     fm.writeNode(node.children[0], child);
-                    
+
                     // 左兄弟最后一个key上移到父节点
                     strcpy(parent.keys[parent_idx - 1], left.keys[left.key_num - 1]);
                     parent.values[parent_idx - 1] = left.values[left.key_num - 1];
                     left.key_num--;
                 }
-                
+
                 // 写回所有修改的节点
                 fm.writeNode(left_pos, left);
                 fm.writeNode(node_pos, node);
@@ -486,7 +489,7 @@ private:
             int right_pos = parent.children[parent_idx + 1];
             Node<ValueType> right;
             fm.readNode(right_pos, right);
-            
+
             if (right.key_num > min_key) {
                 if (node.is_leaf) {
                     // 叶子节点，右兄弟第一个key追加到当前节点末尾
@@ -525,7 +528,7 @@ private:
                     right.children[right.key_num - 1] = right.children[right.key_num];
                     right.key_num--;
                 }
-                
+
                 fm.writeNode(right_pos, right);
                 fm.writeNode(node_pos, node);
                 fm.writeNode(parent_pos, parent);
@@ -533,7 +536,7 @@ private:
             }
         }
 
-        return false;  // 都无法借，需要合并
+        return false; // 都无法借，需要合并
     }
 
     // 处理节点下溢
@@ -562,7 +565,8 @@ private:
         fm.readNode(parent_pos, parent);
         int idx = 0;
         for (; idx <= parent.key_num; idx++) {
-            if (parent.children[idx] == node_pos) break;
+            if (parent.children[idx] == node_pos)
+                break;
         }
         // 优先尝试从兄弟借key
         if (borrowKey(node_pos, idx)) {
@@ -577,9 +581,10 @@ private:
     }
 
     // 找到目标key应该所在的叶子节点
-    int findLeaf(const char* key, ValueType value = std::numeric_limits<ValueType>::min()) {
-        if (fm.getRoot() == -1) return -1;
-        
+    int findLeaf(const char *key, ValueType value = std::numeric_limits<ValueType>::min()) {
+        if (fm.getRoot() == -1)
+            return -1;
+
         int current = fm.getRoot();
         Node<ValueType> node;
         fm.readNode(current, node);
@@ -592,9 +597,9 @@ private:
     }
 
 public:
-    BPlusTree(const std::string& filename) : fm(filename) {}
+    BPlusTree(const std::string &filename) : fm(filename) {}
 
-    bool insert(const char* key, ValueType value) {
+    bool insert(const char *key, ValueType value) {
         // 空树，创建第一个叶子节点作为根
         if (fm.getRoot() == -1) {
             int pos = fm.allocateBlock();
@@ -613,7 +618,7 @@ public:
         int leaf_pos = findLeaf(key, value);
         Node<ValueType> leaf;
         fm.readNode(leaf_pos, leaf);
-        
+
         // 查找插入位置
         int pos = findKeyValuePos(leaf, key, value);
         while (true) {
@@ -621,7 +626,7 @@ public:
             if (pos < leaf.key_num && keyValueCompare(leaf.keys[pos], leaf.values[pos], key, value) == 0) {
                 return false;
             }
-            if (pos < leaf.key_num) 
+            if (pos < leaf.key_num)
                 break;
             // pos等于节点key总数,找下一个叶子节点
             if (leaf.next != -1) {
@@ -646,7 +651,7 @@ public:
         strcpy(leaf.keys[pos], key);
         leaf.values[pos] = value;
         leaf.key_num++;
-        
+
         fm.writeNode(leaf_pos, leaf);
 
         // 检查是否上溢
@@ -659,17 +664,19 @@ public:
                 parent_pos = leaf.parent;
                 fm.readNode(parent_pos, parent);
                 for (; parent_idx <= parent.key_num; parent_idx++) {
-                    if (parent.children[parent_idx] == leaf_pos) break;
+                    if (parent.children[parent_idx] == leaf_pos)
+                        break;
                 }
             }
             splitNode(parent_pos, parent_idx, leaf_pos);
         }
-        
+
         return true;
     }
-    
-    bool remove(const char* key, ValueType value) {
-        if (fm.getRoot() == -1) return false;
+
+    bool remove(const char *key, ValueType value) {
+        if (fm.getRoot() == -1)
+            return false;
 
         int leaf_pos = findLeaf(key, value);
         Node<ValueType> leaf;
@@ -682,8 +689,9 @@ public:
                 found = true;
                 break;
             }
-            if (pos < leaf.key_num) break;
-            
+            if (pos < leaf.key_num)
+                break;
+
             if (leaf.next != -1) {
                 Node<ValueType> next;
                 fm.readNode(leaf.next, next);
@@ -696,7 +704,8 @@ public:
             }
             break;
         }
-        if (!found) return false;
+        if (!found)
+            return false;
 
         // 删除
         for (int i = pos; i < leaf.key_num - 1; i++) {
@@ -710,14 +719,16 @@ public:
         if (leaf.key_num < Node<ValueType>::MIN_KEY_LEAF_T) {
             handleUnderflow(leaf_pos);
         }
-        
+
         return true;
     }
 
-    bool find(const char* key, ValueType& value) {
-        if (fm.getRoot() == -1) return false;
+    bool find(const char *key, ValueType &value) {
+        if (fm.getRoot() == -1)
+            return false;
         int leaf_pos = findLeaf(key, std::numeric_limits<ValueType>::min());
-        if (leaf_pos == -1) return false;
+        if (leaf_pos == -1)
+            return false;
         Node<ValueType> leaf;
         fm.readNode(leaf_pos, leaf);
         int pos = findKeyValuePos(leaf, key, std::numeric_limits<ValueType>::min());
@@ -728,10 +739,12 @@ public:
                     value = leaf.values[pos];
                     return true;
                 }
-                if (cmp > 0) return false;
+                if (cmp > 0)
+                    return false;
                 pos++;
             }
-            if (leaf.next == -1) break;
+            if (leaf.next == -1)
+                break;
             leaf_pos = leaf.next;
             fm.readNode(leaf_pos, leaf);
             pos = 0;
@@ -739,10 +752,12 @@ public:
         return false;
     }
 
-    int findAll(const char* key, ValueType values[], int maxValues) {
-        if (fm.getRoot() == -1) return 0;
+    int findAll(const char *key, ValueType values[], int maxValues) {
+        if (fm.getRoot() == -1)
+            return 0;
         int leaf_pos = findLeaf(key, std::numeric_limits<ValueType>::min());
-        if (leaf_pos == -1) return 0;
+        if (leaf_pos == -1)
+            return 0;
         Node<ValueType> leaf;
         fm.readNode(leaf_pos, leaf);
         int pos = findKeyValuePos(leaf, key, std::numeric_limits<ValueType>::min());
@@ -756,17 +771,19 @@ public:
                     return count;
                 }
             }
-            if (pos < leaf.key_num && strcmp(leaf.keys[pos], key) > 0) break;
-            if (leaf.next == -1) break;
+            if (pos < leaf.key_num && strcmp(leaf.keys[pos], key) > 0)
+                break;
+            if (leaf.next == -1)
+                break;
             leaf_pos = leaf.next;
             fm.readNode(leaf_pos, leaf);
             pos = 0;
         }
         return count;
     }
-    
+
     // 输出指定key对应的所有value
-    void find(const char* key) {
+    void find(const char *key) {
         if (fm.getRoot() == -1) {
             std::cout << "null\n";
             return;
@@ -776,13 +793,13 @@ public:
             std::cout << "null\n";
             return;
         }
-        
+
         int pos = 0;
         bool has_result = false;
         bool first = true;
         int current_leaf = leaf_pos;
         bool first_leaf = true;
-        
+
         // 遍历
         while (current_leaf != -1) {
             Node<ValueType> curr;
@@ -791,7 +808,8 @@ public:
             pos = first_leaf ? findKeyValuePos(curr, key, std::numeric_limits<ValueType>::min()) : 0;
             first_leaf = false;
             while (pos < curr.key_num && strcmp(curr.keys[pos], key) == 0) {
-                if (!first) std::cout << " ";
+                if (!first)
+                    std::cout << " ";
                 std::cout << curr.values[pos];
                 first = false;
                 has_result = true;
@@ -806,7 +824,7 @@ public:
             // 继续下一个叶子节点
             current_leaf = curr.next;
         }
-        
+
         if (!has_result) {
             std::cout << "null";
         }
