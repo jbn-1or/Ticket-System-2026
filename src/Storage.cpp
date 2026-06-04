@@ -15,6 +15,7 @@ const char* StoragePaths::TRAIN_INDEX = "train_index.idx";
 const char* StoragePaths::ORDER_INDEX = "order_index.idx";
 const char* StoragePaths::ORDER_USER_INDEX = "order_user_index.idx";
 const char* StoragePaths::TRAIN_STATION_INDEX = "train_station_index.idx";
+const char* StoragePaths::TRAIN_STATION_PAIR_INDEX = "train_station_pair_index.idx";
 const char* StoragePaths::ORDER_TRAIN_DATE_INDEX = "order_train_date_index.idx";
 
 // base: 基础目录路径，file: 文件名
@@ -55,6 +56,17 @@ static std::string formatOrderKey(int order_id) {
         s = std::string(20 - s.size(), '0') + s;
     }
     return s;
+}
+
+// from: 出发站名，to: 到达站名
+// 格式化两站为站对索引键，返回"from|to"格式的字符串
+static std::string formatStationPairKey(const std::string& from, const std::string& to) {
+    std::string result;
+    result.reserve(from.size() + to.size() + 2);
+    result = from;
+    result += '|';
+    result += to;
+    return result;
 }
 
 // train_id: 列车ID，date: 日期
@@ -281,7 +293,7 @@ static void decodeOrder(const BinaryOrderRecord& bin, OrderRecord& order) {
 // 默认构造函数：初始化StorageManager对象
 // 初始化所有索引指针为nullptr，订单ID从1开始
 StorageManager::StorageManager()
-    : base_path_(), userIndex_(nullptr), trainIndex_(nullptr), orderIndex_(nullptr), orderUserIndex_(nullptr), trainStationIndex_(nullptr), orderTrainDateIndex_(nullptr), next_order_id_(1) {}
+    : base_path_(), userIndex_(nullptr), trainIndex_(nullptr), orderIndex_(nullptr), orderUserIndex_(nullptr), trainStationIndex_(nullptr), trainStationPairIndex_(nullptr), orderTrainDateIndex_(nullptr), next_order_id_(1) {}
 
 // 析构函数：清理StorageManager资源
 // 释放所有索引对象的内存
@@ -308,6 +320,7 @@ bool StorageManager::initialize(const std::string& basePath) {
     auto orderIndexPath = makeDataPath(base_path_, StoragePaths::ORDER_INDEX);
     auto orderUserIndexPath = makeDataPath(base_path_, StoragePaths::ORDER_USER_INDEX);
     auto trainStationIndexPath = makeDataPath(base_path_, StoragePaths::TRAIN_STATION_INDEX);
+    auto trainStationPairIndexPath = makeDataPath(base_path_, StoragePaths::TRAIN_STATION_PAIR_INDEX);
     auto orderTrainDateIndexPath = makeDataPath(base_path_, StoragePaths::ORDER_TRAIN_DATE_INDEX);
 
     userRiver_.initialise(userPath.string());
@@ -319,17 +332,43 @@ bool StorageManager::initialize(const std::string& basePath) {
     delete orderIndex_;
     delete orderUserIndex_;
     delete trainStationIndex_;
+    delete trainStationPairIndex_;
     delete orderTrainDateIndex_;
     userIndex_ = new BPlusTree<int>(userIndexPath.string());
     trainIndex_ = new BPlusTree<int>(trainIndexPath.string());
     orderIndex_ = new BPlusTree<int>(orderIndexPath.string());
     orderUserIndex_ = new BPlusTree<int>(orderUserIndexPath.string());
     trainStationIndex_ = new BPlusTree<int>(trainStationIndexPath.string());
+    trainStationPairIndex_ = new BPlusTree<int>(trainStationPairIndexPath.string());
     orderTrainDateIndex_ = new BPlusTree<int>(orderTrainDateIndexPath.string());
 
     int totalOrders = 0;
     orderRiver_.get_info(totalOrders, 1);
     next_order_id_ = totalOrders + 1;
+
+    // 无条件重建站对索引：遍历所有已有列车，确保都有站对索引条目
+    {
+        int totalTrains = 0;
+        trainRiver_.get_info(totalTrains, 1);
+        if (totalTrains > 0) {
+            int offsetBase = sizeof(int);
+            for (int i = 0; i < totalTrains; ++i) {
+                int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
+                BinaryTrainRecord bin;
+                trainRiver_.read(bin, position);
+                if (bin.deleted) continue;
+                for (int a = 0; a < bin.station_num; ++a) {
+                    for (int b = a + 1; b < bin.station_num; ++b) {
+                        std::string pairKey = formatStationPairKey(
+                            readStringField(bin.stations[a]),
+                            readStringField(bin.stations[b]));
+                        trainStationPairIndex_->insert(pairKey.c_str(), position);
+                    }
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -391,9 +430,16 @@ bool StorageManager::addTrain(const TrainRecord& train) {
         return false;
     if (!trainIndex_->insert(train.train_id.c_str(), offset)) 
         return false;
+    // 插入单站索引和站对索引
     for (int i = 0; i < train.station_num; ++i) {
         if (!trainStationIndex_->insert(train.stations[i].c_str(), offset)) 
             return false;
+        // 对于每个后面的站，插入 (站i, 站j) 的站对索引
+        for (int j = i + 1; j < train.station_num; ++j) {
+            std::string pairKey = formatStationPairKey(train.stations[i], train.stations[j]);
+            if (!trainStationPairIndex_->insert(pairKey.c_str(), offset))
+                return false;
+        }
     }
     int trainCount = 0;
     trainRiver_.get_info(trainCount, 1);
@@ -435,8 +481,15 @@ bool StorageManager::removeTrain(const std::string& train_id) {
     bin.deleted = true;
     trainRiver_.update(bin, position);
     trainIndex_->remove(train_id.c_str(), position);
+    // 删除单站索引和站对索引
     for (int i = 0; i < bin.station_num; ++i) {
         trainStationIndex_->remove(bin.stations[i], position);
+        for (int j = i + 1; j < bin.station_num; ++j) {
+            std::string pairKey = formatStationPairKey(
+                readStringField(bin.stations[i]),
+                readStringField(bin.stations[j]));
+            trainStationPairIndex_->remove(pairKey.c_str(), position);
+        }
     }
     return true;
 }
@@ -514,6 +567,29 @@ bool StorageManager::loadTrainsByStation(const std::string& station, sjtu::vecto
 
     int* offsets = new int[totalTrains];
     int count = trainStationIndex_->findAll(station.c_str(), offsets, totalTrains);
+    for (int i = 0; i < count; ++i) {
+        BinaryTrainRecord bin;
+        trainRiver_.read(bin, offsets[i]);
+        if (bin.deleted) continue;
+        TrainRecord train;
+        decodeTrain(bin, train);
+        trains.push_back(train);
+    }
+    delete[] offsets;
+    return true;
+}
+
+// from: 出发站名，to: 到达站名，trains: 输出列车向量
+// 通过站对索引快速加载同时经过from和to且from在to之前的列车，成功返回true
+bool StorageManager::loadTrainsByStationPair(const std::string& from, const std::string& to, sjtu::vector<TrainRecord>& trains) const {
+    trains.clear();
+    int totalTrains = 0;
+    trainRiver_.get_info(totalTrains, 1);
+    if (totalTrains <= 0) return true;
+
+    std::string pairKey = formatStationPairKey(from, to);
+    int* offsets = new int[totalTrains];
+    int count = trainStationPairIndex_->findAll(pairKey.c_str(), offsets, totalTrains);
     for (int i = 0; i < count; ++i) {
         BinaryTrainRecord bin;
         trainRiver_.read(bin, offsets[i]);

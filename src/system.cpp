@@ -272,7 +272,7 @@ std::string TicketSystem::handleLogin(const Command& command) {
     if (!storage_.loadUser(u, ur)) return "-1";
     if (ur.password != p) return "-1";
     if (checkLogin(u)) return "-1";
-    logged_users.insert({u, true});
+    logged_users.insert(sjtu::pair<const std::string, bool>(u, true));
     return "0";
 }
 
@@ -496,15 +496,17 @@ std::string TicketSystem::handleQueryTicket(const Command& command) {
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
+    // 使用站对索引：直接获取同时经过from和to且顺序正确的列车
     sjtu::vector<TrainRecord> trains;
-    if (!storage_.loadTrainsByStation(from, trains)) return "0";
+    if (!storage_.loadTrainsByStationPair(from, to, trains)) return "0";
     sjtu::vector<Item> items;
     for (size_t i = 0; i < trains.size(); ++i) {
         const TrainRecord& train = trains[i];
         if (!train.released) 
             continue;
-        int from_idx, to_idx;
-        if (!findFromTo(train, from, to, from_idx, to_idx))
+        int from_idx = findStation(train, from);
+        int to_idx = findStation(train, to);
+        if (from_idx < 0 || to_idx < 0 || to_idx <= from_idx)
             continue;
         if (!canRunOnDate(train, from_idx, date))
             continue;

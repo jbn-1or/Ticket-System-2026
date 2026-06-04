@@ -71,6 +71,7 @@ struct StoragePaths {
     static const char* ORDER_INDEX;        // 订单索引文件路径
     static const char* ORDER_USER_INDEX;   // 订单-用户索引文件路径
     static const char* TRAIN_STATION_INDEX; // 列车-站点索引文件路径
+    static const char* TRAIN_STATION_PAIR_INDEX; // 列车-站对索引文件路径
     static const char* ORDER_TRAIN_DATE_INDEX; // 订单-列车-日期索引文件路径
 };
 
@@ -96,6 +97,7 @@ public:
     bool loadOrdersByUser(const std::string& username, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
     bool loadOrdersByTrainDate(const std::string& train_id, const Date& date, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
     bool loadTrainsByStation(const std::string& station, sjtu::vector<TrainRecord>& trains) const;
+    bool loadTrainsByStationPair(const std::string& from, const std::string& to, sjtu::vector<TrainRecord>& trains) const;
     bool loadAllTrains(sjtu::vector<TrainRecord>& trains) const;
     bool loadAllOrders(sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
 
@@ -115,7 +117,8 @@ private:
     BPlusTree<int>* trainIndex_;
     BPlusTree<int>* orderIndex_;
     BPlusTree<int>* orderUserIndex_;
-    BPlusTree<int>* trainStationIndex_;
+    BPlusTree<int>* trainStationIndex_;       // key=站名, value=train offset
+    BPlusTree<int>* trainStationPairIndex_;   // key="from|to", value=train offset
     BPlusTree<int>* orderTrainDateIndex_;
     int next_order_id_;
 };
