@@ -3,7 +3,6 @@
 namespace ticket {
 
 // 默认构造函数
-// 创建一个空的Command对象
 Command::Command() : timestamp(0), type(CommandType::Unknown), param_count(0) {}
 
 // 清空Command

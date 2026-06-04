@@ -79,8 +79,7 @@ struct WaitlistRecord {
     WaitlistRecord();
 };
 
-// ==================== 二进制存储结构 ====================
-
+// 存储结构
 struct BinaryUserRecord {
     char username[21];
     char password[31];

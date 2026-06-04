@@ -2,8 +2,7 @@
 
 namespace ticket {
 
-// ==================== 站点查找 ====================
-
+// 站点查找
 bool findFromTo(const TrainRecord &train, const std::string &from, const std::string &to,
                 int &from_idx, int &to_idx) {
     from_idx = -1;
@@ -33,8 +32,7 @@ int findStation(const TrainRecord &train, const std::string &station) {
     return -1;
 }
 
-// ==================== 时间偏移计算 ====================
-
+// 时间偏移计算
 int arrivalOffsetMinutes(const TrainRecord &train, int station_idx) {
     if (station_idx == 0)
         return 0;
@@ -64,8 +62,7 @@ Time departureTimeAtStation(const TrainRecord &train, int station_idx) {
     return Time(total / 60, total % 60);
 }
 
-// ==================== 日期/时间计算 ====================
-
+// 日期/时间计算
 Date getRunStartDate(const TrainRecord &train, int station_idx, const Date &depart_date) {
     int offset = departureOffsetMinutes(train, station_idx);
     DateTime current(Date(depart_date.month, depart_date.day), departureTimeAtStation(train, station_idx));
@@ -83,8 +80,7 @@ DateTime stationDeparture(const TrainRecord &train, int station_idx, const Date 
     return addMinutes(base, departureOffsetMinutes(train, station_idx));
 }
 
-// ==================== 价格 ====================
-
+// 价格
 int routePrice(const TrainRecord &train, int from_idx, int to_idx) {
     int price = 0;
     for (int i = from_idx; i < to_idx; ++i)
@@ -92,9 +88,7 @@ int routePrice(const TrainRecord &train, int from_idx, int to_idx) {
     return price;
 }
 
-// ==================== 运行日期判断 ====================
-
-// dateInRange 保留为局部函数
+// 运行日期判断
 static bool dateInRange(const Date &begin, const Date &end, const Date &target) {
     if (target < begin)
         return false;
@@ -108,8 +102,7 @@ bool canRunOnDate(const TrainRecord &train, int station_idx, const Date &depart_
     return dateInRange(train.sale_begin, train.sale_end, start_date);
 }
 
-// ==================== 座位 ====================
-
+// 座位
 int availableSeats(const StorageManager &storage,
                    const TrainRecord &train, const Date &start_date,
                    int from_idx, int to_idx) {
@@ -139,8 +132,7 @@ int availableSeats(const StorageManager &storage,
     return available;
 }
 
-// ==================== 中转 ====================
-
+// 中转
 DateTime bestSecondDeparture(const TrainRecord &train, int station_idx, const DateTime &earliest) {
     Date candidate = getRunStartDate(train, station_idx, earliest.date);
     if (candidate < train.sale_begin)
@@ -153,8 +145,6 @@ DateTime bestSecondDeparture(const TrainRecord &train, int station_idx, const Da
     }
     return DateTime(Date(0, 0), Time(0, 0));
 }
-
-// ==================== query_ticket 排序 ====================
 
 void sortItem(sjtu::vector<Item> &items) {
     for (size_t i = 1; i < items.size(); ++i) {

@@ -21,7 +21,6 @@ private:
     bool checkLogin(const std::string &username) const;
     int privilegeOf(const std::string &username) const;
 
-    // logged-in users
     sjtu::map<std::string, bool> logged_users;
 
     std::string handleAddUser(const Command &command);

@@ -2,7 +2,6 @@
 
 namespace ticket {
 
-// month: 月份(1-12)
 // 获取指定月份的天数，无效月份返回31
 static int monthDays(int month) {
     static const int table[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};

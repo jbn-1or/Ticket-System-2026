@@ -7,8 +7,6 @@
 
 namespace ticket {
 
-// ==================== TicketSystem 基础方法 ====================
-
 TicketSystem::TicketSystem() {}
 
 TicketSystem::~TicketSystem() {}
@@ -66,8 +64,6 @@ int TicketSystem::privilegeOf(const std::string &username) const {
         return -1;
     return u.privilege;
 }
-
-// ==================== handle 函数 ====================
 
 std::string TicketSystem::handleAddUser(const Command &command) {
     std::string newu = command.getParam('u');
