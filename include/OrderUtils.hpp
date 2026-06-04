@@ -2,7 +2,6 @@
 #define TICKET_SYSTEM_ORDER_UTILS_HPP
 
 #include "Storage.hpp"
-#include "Storage.hpp"
 #include "vector.hpp"
 
 namespace ticket {
