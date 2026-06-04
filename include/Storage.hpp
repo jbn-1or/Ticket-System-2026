@@ -98,11 +98,6 @@ public:
     bool loadOrdersByTrainDate(const std::string& train_id, const Date& date, sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
     bool loadTrainsByStation(const std::string& station, sjtu::vector<TrainRecord>& trains) const;
     bool loadTrainsByStationPair(const std::string& from, const std::string& to, sjtu::vector<TrainRecord>& trains) const;
-    bool loadAllTrains(sjtu::vector<TrainRecord>& trains) const;
-    bool loadAllOrders(sjtu::vector<OrderRecord>& orders, sjtu::vector<int>& ids) const;
-
-    bool enqueueWaitlist(const WaitlistRecord& wait);
-    bool loadNextWaitlist(WaitlistRecord& wait) const;
 
     // helper
     bool hasAnyUser() const;

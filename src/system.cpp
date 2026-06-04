@@ -4,12 +4,6 @@
 
 namespace ticket {
 
-// c: 待检查的字符
-// 判断字符是否为空白字符（空格、制表符、回车、换行），是返回true
-static bool isSpace(char c) {
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-}
-
 // text: 待分割的字符串，delim: 分隔符，parts: 输出数组，count: 输出分割数量，maxCount: 最大分割数
 // 按分隔符分割字符串，结果存入数组，返回分割数量
 static void splitString(const std::string& text, char delim, std::string parts[], int& count, int maxCount) {
@@ -559,18 +553,16 @@ static DateTime bestSecondDeparture(const TrainRecord& train, int station_idx, c
 
 // command: 包含出发站、到达站、日期的命令对象
 // 处理查询中转车票请求，成功返回最优中转方案，无结果返回"0"
+// 优化：使用站对索引 loadTrainsByStationPair(mid, to) 替代对全部 second 列车的 findStation 扫描
 std::string TicketSystem::handleQueryTransfer(const Command& command) {
     // 读取命令参数：出发站、到达站、日期、排序方式
     std::string from = command.getParam('s');
     std::string to = command.getParam('t');
     Date date = Date::parse(command.getParam('d'));
     std::string order = command.hasParam('p') ? command.getParam('p') : "time";
-    // 加载出发站和到达站的列车记录
+    // 加载出发站的列车记录
     sjtu::vector<TrainRecord> firstTrains;
     if (!storage_.loadTrainsByStation(from, firstTrains)) 
-        return "0";
-    sjtu::vector<TrainRecord> secondTrains;
-    if (!storage_.loadTrainsByStation(to, secondTrains)) 
         return "0";
     // 初始化最优中转方案的变量
     bool found = false;
@@ -580,22 +572,6 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     std::string best_line2;
     std::string best_first_id;
     std::string best_second_id;
-    // 预计算每个 second 列车中 to 站的索引，并过滤不包含 to 的列车
-    struct SecondInfo {
-        TrainRecord* train;
-        int end_idx;  // to 站的索引，-1 表示不包含
-    };
-    sjtu::vector<SecondInfo> secondInfos;
-    for (size_t j = 0; j < secondTrains.size(); ++j) {
-        TrainRecord& second = secondTrains[j];
-        if (!second.released) continue;
-        int ei = findStation(second, to);
-        if (ei < 0) continue;  // 不包含目标站，直接跳过
-        secondInfos.push_back({&second, ei});
-    }
-    if (secondInfos.empty()) {
-        return "0";
-    }
 
     // 遍历出发站的列车，查找符合要求的中转方案
     for (size_t i = 0; i < firstTrains.size(); ++i) {
@@ -612,24 +588,30 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
         // 判断列车是否在指定日期运行，并且到达时间不晚于查询日期
         if (!(first_depart.date == date) || !dateInRange(first.sale_begin, first.sale_end, first_start))
             continue;
-        // 提前计算 first 列车的站点价格前缀和（用于 routePrice）
         // 遍历first列车的中间站,查找符合要求的中转方案
         for (int mid = start_idx + 1; mid < first.station_num; ++mid) {
             const std::string& mid_station = first.stations[mid];
             // 计算第一辆列车到达中转站的时间
             DateTime first_arrive = stationArrival(first, mid, first_start);
             int first_price = routePrice(first, start_idx, mid);
-            // 预计算 first 段的座位（提前到 mid 循环中，因为对每个 second 都一样）
+            // 预计算 first 段的座位
             int seats1 = availableSeats(storage_, first, first_start, start_idx, mid);
-            if (seats1 <= 0) continue;  // 第一段就没座，跳过所有 second
+            if (seats1 <= 0) continue;  // 第一段就没座，跳过
 
-            for (size_t j = 0; j < secondInfos.size(); ++j) {
-                TrainRecord& second = *(secondInfos[j].train);
-                int end_idx = secondInfos[j].end_idx;
+            // 使用站对索引：直接获取同时经过 mid_station 和 to 且顺序正确的列车
+            sjtu::vector<TrainRecord> midSecondTrains;
+            if (!storage_.loadTrainsByStationPair(mid_station, to, midSecondTrains))
+                continue;
+
+            for (size_t j = 0; j < midSecondTrains.size(); ++j) {
+                TrainRecord& second = midSecondTrains[j];
+                if (!second.released) continue;
                 if (first.train_id == second.train_id) 
                     continue;
+                // 站对索引已保证 mid_station 在 to 之前，获取具体索引
                 int mid_idx = findStation(second, mid_station);
-                if (mid_idx < 0 || mid_idx >= end_idx) 
+                int end_idx = findStation(second, to);
+                if (mid_idx < 0 || end_idx < 0 || mid_idx >= end_idx) 
                     continue;
                 // 查找第二辆列车在中转站最早可行的出发时间
                 DateTime second_depart = bestSecondDeparture(second, mid_idx, first_arrive);
@@ -687,13 +669,6 @@ std::string TicketSystem::handleQueryTransfer(const Command& command) {
     }
     std::string result = best_line1 + "\n" + best_line2;
     return result;
-}
-
-// left/right: 待比较的订单记录，descending: 是否降序
-// 比较两个订单的时间戳，返回比较结果（true表示left应排在right前面）
-static bool compareOrderTimestamp(const OrderRecord& left, const OrderRecord& right, bool descending) {
-    if (descending) return left.timestamp > right.timestamp;
-    return left.timestamp < right.timestamp;
 }
 
 static void sortIdx(sjtu::vector<int>& idx, const OrderRecord orders[], const int ids[], bool descending) {
