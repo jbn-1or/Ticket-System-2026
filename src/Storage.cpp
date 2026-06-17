@@ -17,9 +17,6 @@ OrderRecord::OrderRecord()
     : order_id(0), username(), train_id(), date(), from_idx(0), to_idx(0), num(0),
       price(0), status(OrderStatus::Success), is_waiting(false), timestamp(0) {}
 
-WaitlistRecord::WaitlistRecord()
-    : username(), train_id(), date(), from_idx(0), to_idx(0), num(0), timestamp(0) {}
-
 // 路径常量
 const char *StoragePaths::USERS = "users.db";
 const char *StoragePaths::TRAINS = "trains.db";

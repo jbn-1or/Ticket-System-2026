@@ -5,13 +5,6 @@ namespace ticket {
 // 默认构造函数
 Command::Command() : timestamp(0), type(CommandType::Unknown), param_count(0) {}
 
-// 清空Command
-void Command::clear() {
-    timestamp = 0;
-    type = CommandType::Unknown;
-    param_count = 0;
-}
-
 // key: 参数的键名，value: 参数的值
 // 向Command对象添加一个键值对参数，最多支持16个参数
 void Command::addParam(char key, const std::string &value) {

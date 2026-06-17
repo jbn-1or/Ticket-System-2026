@@ -45,7 +45,6 @@ struct DateTime {
 
 class DateTimeUtils {
 public:
-    static bool inRange(const Date &begin, const Date &end, const Date &target);
     static int dayOffset(const Date &from, const Date &to);
 };
 

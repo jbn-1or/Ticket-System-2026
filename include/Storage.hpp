@@ -66,18 +66,7 @@ struct OrderRecord {
     OrderRecord();
 };
 
-// 候补记录
-struct WaitlistRecord {
-    std::string username;
-    std::string train_id;
-    Date date;
-    int from_idx;
-    int to_idx;
-    int num;
-    int timestamp;
-
-    WaitlistRecord();
-};
+// 候补订单直接复用 OrderRecord（status == Pending 即为候补）
 
 // 存储结构
 struct BinaryUserRecord {

@@ -107,12 +107,6 @@ bool DateTime::operator==(const DateTime &other) const {
     return date == other.date && time == other.time;
 }
 
-// begin: 范围开始日期，end: 范围结束日期，target: 目标日期
-// 判断目标日期是否在[begin, end]范围内，在范围内返回true
-bool DateTimeUtils::inRange(const Date &begin, const Date &end, const Date &target) {
-    return !(target < begin) && !(end < target);
-}
-
 // d: 日期对象
 // 计算日期是一年中的第几天，返回天数
 static int dayOfYear(const Date &d) {
