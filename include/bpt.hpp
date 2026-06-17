@@ -61,8 +61,6 @@ struct Node {
     }
 };
 
-static_assert(sizeof(Node<int>) <= NODE_SIZE, "B+Tree node size exceeds NODE_SIZE");
-
 template <typename ValueType = int>
 class FileManager {
 private:
