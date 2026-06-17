@@ -68,42 +68,9 @@ private:
     std::string filename; // 文件名
     FileHeader header;    // 文件头
     static constexpr size_t BLOCK_SIZE = sizeof(Node<ValueType>);
-    static constexpr int CACHE_SIZE = 16;
-
-    // 缓存条目结构体，用于节点缓存
-    struct CacheEntry {
-        int pos;              // 节点位置
-        Node<ValueType> node; // 节点数据
-        bool valid;           // 缓存是否有效
-    };
-    CacheEntry cache_[CACHE_SIZE];
-
-    inline int cacheIndex(int pos) const {
-        return pos % CACHE_SIZE;
-    }
-
-    bool tryGetCachedNode(int pos, Node<ValueType> &node) {
-        int idx = cacheIndex(pos);
-        if (cache_[idx].valid && cache_[idx].pos == pos) {
-            node = cache_[idx].node;
-            return true;
-        }
-        return false;
-    }
-
-    void updateCache(int pos, const Node<ValueType> &node) {
-        int idx = cacheIndex(pos);
-        cache_[idx].valid = true;
-        cache_[idx].pos = pos;
-        cache_[idx].node = node;
-    }
 
 public:
     FileManager(const std::string &fname) : filename(fname) {
-        for (int i = 0; i < CACHE_SIZE; ++i) {
-            cache_[i].valid = false;
-            cache_[i].pos = -1;
-        }
         bool exists = std::filesystem::exists(filename);
 
         file.open(filename, std::ios::in | std::ios::out | std::ios::binary);
@@ -166,20 +133,14 @@ public:
 
     // 读任意node
     void readNode(int pos, Node<ValueType> &node) {
-        if (tryGetCachedNode(pos, node)) {
-            return;
-        }
-        // 计算偏移：文件头大小
         file.seekg(sizeof(FileHeader) + pos * BLOCK_SIZE);
         file.read(reinterpret_cast<char *>(&node), BLOCK_SIZE);
-        updateCache(pos, node);
     }
 
     // 将任意node写入
     void writeNode(int pos, const Node<ValueType> &node) {
         file.seekp(sizeof(FileHeader) + pos * BLOCK_SIZE);
         file.write(reinterpret_cast<const char *>(&node), BLOCK_SIZE);
-        updateCache(pos, node);
     }
 
     int getRoot() {
