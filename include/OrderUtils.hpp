@@ -4,7 +4,7 @@
 #include "Storage.hpp"
 #include "vector.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 class TicketSystem;
 class StorageManager;
@@ -28,6 +28,6 @@ bool loadPendingOrders(const StorageManager &storage,
 void processWaitlist(TicketSystem &sys, StorageManager &storage,
                      const TrainRecord &train, const Date &start_date);
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_ORDER_UTILS_HPP

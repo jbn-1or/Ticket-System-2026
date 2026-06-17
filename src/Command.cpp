@@ -1,6 +1,6 @@
 #include "Command.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 // 默认构造函数
 Command::Command() : timestamp(0), type(CommandType::Unknown), param_count(0) {}
@@ -147,4 +147,4 @@ void splitString(const std::string &text, char delim, sjtu::vector<std::string> 
         parts.push_back(current);
 }
 
-} // namespace ticket
+} // namespace ticketsystem

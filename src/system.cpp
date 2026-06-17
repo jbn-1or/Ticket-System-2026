@@ -5,7 +5,7 @@
 #include <cstring>
 #include <filesystem>
 
-namespace ticket {
+namespace ticketsystem {
 
 TicketSystem::TicketSystem() {}
 
@@ -550,4 +550,4 @@ std::string TicketSystem::handleExit(const Command &command) {
     return "bye";
 }
 
-} // namespace ticket
+} // namespace ticketsystem

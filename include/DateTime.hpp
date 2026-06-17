@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace ticket {
+namespace ticketsystem {
 
 // 日期
 struct Date {
@@ -51,6 +51,6 @@ public:
 DateTime addMinutes(const DateTime &dt, int minutes);
 Date addDays(const Date &d, int offset);
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_DATETIME_HPP

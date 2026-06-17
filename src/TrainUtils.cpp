@@ -1,6 +1,6 @@
 #include "TrainUtils.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 // 站点查找
 bool findFromTo(const TrainRecord &train, const std::string &from, const std::string &to,
@@ -159,4 +159,4 @@ void sortItem(sjtu::vector<Item> &items) {
     }
 }
 
-} // namespace ticket
+} // namespace ticketsystem

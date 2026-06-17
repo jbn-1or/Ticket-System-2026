@@ -1,6 +1,6 @@
 #include "DateTime.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 // 获取指定月份的天数，无效月份返回31
 static int monthDays(int month) {
@@ -179,4 +179,4 @@ DateTime addMinutes(const DateTime &dt, int minutes) {
     return DateTime(newDate, Time(hour, minute));
 }
 
-} // namespace ticket
+} // namespace ticketsystem

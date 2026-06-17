@@ -2,7 +2,7 @@
 #include "System.hpp"
 #include "TrainUtils.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 // 订单状态
 std::string orderStatusString(OrderStatus status) {
@@ -124,4 +124,4 @@ void processWaitlist(TicketSystem &sys, StorageManager &storage,
     }
 }
 
-} // namespace ticket
+} // namespace ticketsystem

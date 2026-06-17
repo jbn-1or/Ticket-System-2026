@@ -7,7 +7,7 @@
 #include <map.hpp>
 #include <string>
 
-namespace ticket {
+namespace ticketsystem {
 
 class TicketSystem {
 public:
@@ -44,6 +44,6 @@ private:
     StorageManager storage_;
 };
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_SYSTEM_HPP

@@ -4,7 +4,7 @@
 #include "vector.hpp"
 #include <string>
 
-namespace ticket {
+namespace ticketsystem {
 
 enum class CommandType {
     AddUser,
@@ -55,6 +55,6 @@ public:
 // 按分隔符分割字符串
 void splitString(const std::string &text, char delim, sjtu::vector<std::string> &parts, int maxCount);
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_COMMAND_HPP

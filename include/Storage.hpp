@@ -7,7 +7,7 @@
 #include "vector.hpp"
 #include <string>
 
-namespace ticket {
+namespace ticketsystem {
 
 static const int MAX_STATIONS = 100;
 static const int MAX_PRICE_SEGMENTS = 100;
@@ -173,6 +173,6 @@ private:
     int next_order_id_;
 };
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_STORAGE_HPP

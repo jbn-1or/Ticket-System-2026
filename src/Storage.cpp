@@ -4,7 +4,7 @@
 #include <cstring>
 #include <filesystem>
 
-namespace ticket {
+namespace ticketsystem {
 
 // 构造函数
 UserRecord::UserRecord() : username(), password(), name(), mail(), privilege(0) {}
@@ -639,4 +639,4 @@ bool StorageManager::hasAnyUser() const {
     return count > 0;
 }
 
-} // namespace ticket
+} // namespace ticketsystem

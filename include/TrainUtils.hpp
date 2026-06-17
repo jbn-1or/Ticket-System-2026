@@ -5,7 +5,7 @@
 #include "Storage.hpp"
 #include "vector.hpp"
 
-namespace ticket {
+namespace ticketsystem {
 
 bool findFromTo(const TrainRecord &train, const std::string &from, const std::string &to,
                 int &from_idx, int &to_idx);
@@ -53,6 +53,6 @@ struct Item {
 // 按key1升序，key1相同时按key2升序
 void sortItem(sjtu::vector<Item> &items);
 
-} // namespace ticket
+} // namespace ticketsystem
 
 #endif // TICKET_SYSTEM_TRAIN_UTILS_HPP

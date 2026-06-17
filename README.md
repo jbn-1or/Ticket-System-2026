@@ -1,7 +1,5 @@
 # 火车票管理系统
 
----
-
 ## 项目概述
 
 本项目实现了一个火车票订票后端系统。系统以命令行交互方式运行，通过标准输入输出处理购票、查询、退票、用户管理等业务，并提供管理员后台功能。所有数据持久化在**本地文件系统**中，在严格的内存限制下通过自实现的 **B+树** 和 **MemoryRiver** 文件存储引擎进行高效读写。
@@ -45,15 +43,11 @@ Ticket-System-2026/
 │   └── OrderUtils.cpp              # 订单工具函数实现
 │
 ├── STLite/                         # 自实现 STL
-│   ├── vector/src/vector.hpp       # sjtu::vector<T>
-│   ├── map/src/map.hpp             # sjtu::map<K,V>（AVL 平衡树）
-│   ├── priority_queue/include/     # sjtu::priority_queue<T>
-│   └── deque/                      # sjtu::deque<T>
-│
-├── data/                           # 运行时数据文件（程序生成）
-    ├── *.db                        # MemoryRiver 数据文件
-    ├── *.idx                       # B+ 树索引文件
-    └── ...
+    ├── vector/src/vector.hpp       # sjtu::vector<T>
+    ├── map/src/map.hpp             # sjtu::map<K,V>（AVL 平衡树）
+    ├── priority_queue/include/     # sjtu::priority_queue<T>
+    └── deque/                      # sjtu::deque<T>
+
 ```
 
 ---
@@ -170,33 +164,3 @@ graph TD
 3. 触发 `processWaitlist`：加载该车次该日期的所有待处理候补订单（按时间戳升序），依次检查是否有足够余票满足，满足则转为 `Success`
 
 ---
-
-## 技术亮点
-
-### 1. 多索引 B+ 树架构
-
-为每条高频查询路径建立专用 B+ 树索引，避免全表扫描：
-
-- **站对索引**（`train_station_pair_index`）：将 `query_ticket` 的候选集从「所有经过出发站的车次」缩小为「同时经过出发站和到达站且顺序正确的车次」
-- **车次日期索引**（`order_train_date_index`）：将 `availableSeats` 的订单加载从全量扫描缩小为仅加载指定车次指定日期的订单
-
-### 2. 二进制编码转换
-
-所有 `*Record` 结构体（含 `std::string` / `sjtu::vector`）在写入文件前通过 `encode*` 函数转换为固定大小的 `Binary*Record`；读取时通过 `decode*` 还原。这确保了文件记录的定长特性，使 MemoryRiver 的随机读写成为可能。
-
-### 3. 分离物理与逻辑结构
-
-`TrainRecord`（逻辑层，使用 `sjtu::vector` 动态容器）与 `BinaryTrainRecord`（物理层，固定数组）分离，使得在内存中操作灵活的同时，磁盘存储紧凑高效。
-
-### 4. 日期时间跨天处理
-
-`DateTimeUtils::dayOffset` 和 `addMinutes` 等函数正确处理了跨天的时间计算。列车运行时间可能超过 24 小时（保证不超过 72 小时），通过分钟偏移量统一计算到达/离开日期。
-
-### 5. 时间戳单调性保证
-
-订单按时间戳排序，退票按「从新到旧」顺序处理。`clean` 和进程重启后通过持久化的 `timestamp` 字段恢复排序依据。
-
----
-
-
-  
