@@ -21,7 +21,6 @@ OrderRecord::OrderRecord()
 const char *StoragePaths::USERS = "users.db";
 const char *StoragePaths::TRAINS = "trains.db";
 const char *StoragePaths::ORDERS = "orders.db";
-const char *StoragePaths::WAITLIST = "waitlist.db";
 const char *StoragePaths::USER_INDEX = "user_index.idx";
 const char *StoragePaths::TRAIN_INDEX = "train_index.idx";
 const char *StoragePaths::ORDER_INDEX = "order_index.idx";
@@ -106,7 +105,6 @@ static void encodeUser(const UserRecord &user, BinaryUserRecord &bin) {
     copyStringField(user.mail, bin.mail, sizeof(bin.mail));
     bin.privilege = user.privilege;
     bin.deleted = false;
-    memset(bin.padding, 0, sizeof(bin.padding));
 }
 
 // bin: 二进制用户记录，user: 输出的用户记录
@@ -173,7 +171,6 @@ static void encodeTrain(const TrainRecord &train, BinaryTrainRecord &bin) {
     bin.type = train.type;
     bin.released = train.released;
     bin.deleted = false;
-    memset(bin.padding, 0, sizeof(bin.padding));
 }
 
 // bin: 二进制列车记录，train: 输出的列车记录
@@ -233,7 +230,6 @@ static void encodeOrder(const OrderRecord &order, BinaryOrderRecord &bin) {
     bin.status = static_cast<int>(order.status);
     bin.is_waiting = order.is_waiting;
     bin.deleted = false;
-    memset(bin.padding, 0, sizeof(bin.padding));
     bin.timestamp = order.timestamp;
 }
 

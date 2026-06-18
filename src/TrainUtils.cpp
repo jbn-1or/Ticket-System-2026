@@ -103,9 +103,8 @@ bool canRunOnDate(const TrainRecord &train, int station_idx, const Date &depart_
 }
 
 // 座位
-int availableSeats(const StorageManager &storage,
-                   const TrainRecord &train, const Date &start_date,
-                   int from_idx, int to_idx) {
+int availableSeats(const StorageManager &storage, const TrainRecord &train,
+                   const Date &start_date, int from_idx, int to_idx) {
     int occupancy[100] = {0};
     sjtu::vector<OrderRecord> orders;
     sjtu::vector<int> ids;
@@ -146,6 +145,7 @@ DateTime bestSecondDeparture(const TrainRecord &train, int station_idx, const Da
     return DateTime(Date(0, 0), Time(0, 0));
 }
 
+// 插入排序
 void sortItem(sjtu::vector<Item> &items) {
     for (size_t i = 1; i < items.size(); ++i) {
         Item tmp = items[i];

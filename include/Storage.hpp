@@ -66,8 +66,6 @@ struct OrderRecord {
     OrderRecord();
 };
 
-// 候补订单直接复用 OrderRecord（status == Pending 即为候补）
-
 // 存储结构
 struct BinaryUserRecord {
     char username[21];
@@ -76,7 +74,6 @@ struct BinaryUserRecord {
     char mail[31];
     int privilege;
     bool deleted;
-    char padding[3];
 };
 
 struct BinaryTrainRecord {
@@ -97,7 +94,6 @@ struct BinaryTrainRecord {
     char type;
     bool released;
     bool deleted;
-    char padding[2];
 };
 
 struct BinaryOrderRecord {
@@ -113,7 +109,6 @@ struct BinaryOrderRecord {
     int status;
     bool is_waiting;
     bool deleted;
-    char padding[2];
     int timestamp;
 };
 
@@ -121,7 +116,6 @@ struct StoragePaths {
     static const char *USERS;
     static const char *TRAINS;
     static const char *ORDERS;
-    static const char *WAITLIST;
     static const char *USER_INDEX;
     static const char *TRAIN_INDEX;
     static const char *ORDER_INDEX;
