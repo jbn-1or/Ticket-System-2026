@@ -305,25 +305,23 @@ bool StorageManager::initialize(const std::string &basePath) {
     orderRiver_.get_info(totalOrders, 1);
     next_order_id_ = totalOrders + 1;
 
-    // 无条件重建站对索引：遍历所有已有列车，确保都有站对索引条目
-    {
-        int totalTrains = 0;
-        trainRiver_.get_info(totalTrains, 1);
-        if (totalTrains > 0) {
-            int offsetBase = sizeof(int);
-            for (int i = 0; i < totalTrains; ++i) {
-                int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
-                BinaryTrainRecord bin;
-                trainRiver_.read(bin, position);
-                if (bin.deleted)
-                    continue;
-                for (int a = 0; a < bin.station_num; ++a) {
-                    for (int b = a + 1; b < bin.station_num; ++b) {
-                        std::string pairKey = formatStationPairKey(
-                            readStringField(bin.stations[a]),
-                            readStringField(bin.stations[b]));
-                        trainStationPairIndex_->insert(pairKey.c_str(), position);
-                    }
+    // 遍历所有已有列车，确保都有站对索引条目
+    int totalTrains = 0;
+    trainRiver_.get_info(totalTrains, 1);
+    if (totalTrains > 0) {
+        int offsetBase = sizeof(int);
+        for (int i = 0; i < totalTrains; ++i) {
+            int position = offsetBase + i * static_cast<int>(sizeof(BinaryTrainRecord));
+            BinaryTrainRecord bin;
+            trainRiver_.read(bin, position);
+            if (bin.deleted)
+                continue;
+            for (int a = 0; a < bin.station_num; ++a) {
+                for (int b = a + 1; b < bin.station_num; ++b) {
+                    std::string pairKey = formatStationPairKey(
+                        readStringField(bin.stations[a]),
+                        readStringField(bin.stations[b]));
+                    trainStationPairIndex_->insert(pairKey.c_str(), position);
                 }
             }
         }
@@ -332,7 +330,6 @@ bool StorageManager::initialize(const std::string &basePath) {
     return true;
 }
 
-// 无参数
 // 获取数据存储基础路径，返回路径字符串
 std::string StorageManager::basePath() const {
     return base_path_;
@@ -627,7 +624,6 @@ bool StorageManager::updateOrder(int order_id, const OrderRecord &order) {
     return true;
 }
 
-// 无参数
 // 检查是否存在任何用户，存在返回true
 bool StorageManager::hasAnyUser() const {
     int count = 0;

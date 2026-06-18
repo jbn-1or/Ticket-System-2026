@@ -132,6 +132,23 @@ graph TD
 
 ### 关键算法
 
+add_user      [N]  → user_index.insert
+login         [F]  → user_index.find
+logout        [F]  → user_index.find
+query_profile [SF] → user_index.find
+modify_profile[F]  → user_index.find
+add_train     [N]  → train_index.insert + train_station_index.insert×S + train_station_pair_index.insert×(S²/2)
+delete_train  [N]  → train_index.find + remove + station/pair index remove×多
+release_train [N]  → train_index.find
+query_train   [N]  → train_index.find + order_train_date_index.findAll
+query_ticket  [SF] → train_station_pair_index.findAll → train_index.find×K → order_train_date_index.findAll×K
+query_transfer[N]  → train_station_index.findAll → train_station_pair_index.findAll×S → train_index.find×多 → order_train_date_index.findAll×多
+buy_ticket    [SF] → user_index.find + train_index.find + order_train_date_index.findAll + order_index.insert + order_user_index.insert + order_train_date_index.insert
+query_order   [F]  → order_user_index.findAll → train_index.find×K
+refund_ticket [F]  → order_user_index.findAll → order_index.find + order_train_date_index.findAll×多(候补)
+clean         [R]  → 删除所有文件，重建
+exit          [R]  → 无 B+ 树操作
+
 #### `query_ticket` [SF] — 直达车票查询
 
 1. 通过 `train_station_pair_index` 站对索引，B+ 树 `findAll` 获取所有同时经过出发站和到达站（且出发站在前）的车次
